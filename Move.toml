@@ -1,0 +1,10 @@
+[package]
+name = "stc-bridge-move"
+version = "0.0.1"
+
+[addresses]
+StarcoinFramework = "0x1"
+Bridge = "0x8c109349c6bd91411d6bc962e080c4a3"
+
+[dependencies]
+StarcoinFramework = { git = "https://github.com/starcoinorg/starcoin-framework.git", rev = "45c1a16fc36a01f58e497c2d6be20fbeba2bf808" }
