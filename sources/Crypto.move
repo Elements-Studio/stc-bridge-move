@@ -6,7 +6,7 @@ module Bridge::Crypto {
     use StarcoinFramework::Vector;
 
     public fun ecdsa_pub_key_to_eth_address(_compressed_pub_key: &vector<u8>): vector<u8> {
-        // TODO(BobOng):
+        // TODO(VR): Add implementation code
         // // Decompress pub key
         // let decompressed = ecdsa_k1::decompress_pubkey(compressed_pub_key);
         //
