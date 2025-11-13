@@ -3,6 +3,8 @@
 
 module Bridge::Committee {
 
+    use StarcoinFramework::SimpleMap::SimpleMap;
+
     const ESignatureBelowThreshold: u64 = 0;
     const EDuplicatedSignature: u64 = 1;
     const EInvalidSignature: u64 = 2;
@@ -17,25 +19,25 @@ module Bridge::Committee {
     const SUI_MESSAGE_PREFIX: vector<u8> = b"STARCOIN_BRIDGE_MESSAGE";
 
     const ECDSA_COMPRESSED_PUBKEY_LENGTH: u64 = 33;
+
+    //////////////////////////////////////////////////////
+    // Types
     //
-    // //////////////////////////////////////////////////////
-    // // Types
-    // //
-    // struct BlocklistValidatorEvent has copy, drop {
-    //     blocklisted: bool,
-    //     public_keys: vector<vector<u8>>,
-    // }
-    //
-    // struct BridgeCommittee has store {
-    //     // commitee pub key and weight
-    //     members: VecMap<vector<u8>, CommitteeMember>,
-    //     // Committee member registrations for the next committee creation.
-    //     member_registrations: VecMap<address, CommitteeMemberRegistration>,
-    //     // Epoch when the current committee was updated,
-    //     // the voting power for each of the committee members are snapshot from this epoch.
-    //     // This is mainly for verification/auditing purposes, it might not be useful for bridge operations.
-    //     last_committee_update_epoch: u64,
-    // }
+    struct BlocklistValidatorEvent has copy, drop {
+        blocklisted: bool,
+        public_keys: vector<vector<u8>>,
+    }
+
+    struct BridgeCommittee has store {
+        // commitee pub key and weight
+        members: SimpleMap<vector<u8>, CommitteeMember>,
+        // Committee member registrations for the next committee creation.
+        member_registrations: SimpleMap<address, CommitteeMemberRegistration>,
+        // Epoch when the current committee was updated,
+        // the voting power for each of the committee members are snapshot from this epoch.
+        // This is mainly for verification/auditing purposes, it might not be useful for bridge operations.
+        last_committee_update_epoch: u64,
+    }
     //
     // struct CommitteeUpdateEvent has copy, drop {
     //     // commitee pub key and weight
@@ -47,30 +49,30 @@ module Bridge::Committee {
     //     member: vector<u8>,
     //     new_url: vector<u8>,
     // }
-    //
-    // struct CommitteeMember has copy, drop, store {
-    //     /// The Sui Address of the validator
-    //     sui_address: address,
-    //     /// The public key bytes of the bridge key
-    //     bridge_pubkey_bytes: vector<u8>,
-    //     /// Voting power, values are voting power in the scale of 10000.
-    //     voting_power: u64,
-    //     /// The HTTP REST URL the member's node listens to
-    //     /// it looks like b'https://127.0.0.1:9191'
-    //     http_rest_url: vector<u8>,
-    //     /// If this member is blocklisted
-    //     blocklisted: bool,
-    // }
-    //
-    // struct CommitteeMemberRegistration has copy, drop, store {
-    //     /// The Sui Address of the validator
-    //     sui_address: address,
-    //     /// The public key bytes of the bridge key
-    //     bridge_pubkey_bytes: vector<u8>,
-    //     /// The HTTP REST URL the member's node listens to
-    //     /// it looks like b'https://127.0.0.1:9191'
-    //     http_rest_url: vector<u8>,
-    // }
+
+    struct CommitteeMember has copy, drop, store {
+        /// The Sui Address of the validator
+        sui_address: address,
+        /// The public key bytes of the bridge key
+        bridge_pubkey_bytes: vector<u8>,
+        /// Voting power, values are voting power in the scale of 10000.
+        voting_power: u64,
+        /// The HTTP REST URL the member's node listens to
+        /// it looks like b'https://127.0.0.1:9191'
+        http_rest_url: vector<u8>,
+        /// If this member is blocklisted
+        blocklisted: bool,
+    }
+
+    struct CommitteeMemberRegistration has copy, drop, store {
+        /// The Sui Address of the validator
+        sui_address: address,
+        /// The public key bytes of the bridge key
+        bridge_pubkey_bytes: vector<u8>,
+        /// The HTTP REST URL the member's node listens to
+        /// it looks like b'https://127.0.0.1:9191'
+        http_rest_url: vector<u8>,
+    }
     //
     // //////////////////////////////////////////////////////
     // // Public functions

@@ -2,114 +2,145 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Treasury {
+    use StarcoinFramework::BCS;
+    use StarcoinFramework::Event;
+    use StarcoinFramework::Signer;
+    use StarcoinFramework::SimpleMap::{Self, SimpleMap};
+    use StarcoinFramework::Token::{Self, BurnCapability, MintCapability};
+
     const EUnsupportedTokenType: u64 = 1;
     const EInvalidUpgradeCap: u64 = 2;
     const ETokenSupplyNonZero: u64 = 3;
     const EInvalidNotionalValue: u64 = 4;
+    const EInvalidSigner: u64 = 5;
 
     #[test_only]
     const USD_VALUE_MULTIPLIER: u64 = 100000000; // 8 DP accuracy
+
+    //////////////////////////////////////////////////////
+    // Types
     //
-    // //////////////////////////////////////////////////////
-    // // Types
-    // //
+    struct BridgeTreasury has store {
+        // token treasuries, values are TreasuryCaps for native bridge V1.
+        // treasuries: ObjectBag,
+        supported_tokens: SimpleMap<vector<u8>, BridgeTokenMetadata>,
+        // Mapping token id to type name
+        id_token_type_map: SimpleMap<u8, vector<u8>>,
+        // Bag for storing potential new token waiting to be approved
+        // waiting_room: Bag,
+    }
+
+    struct BridgeTokenMetadata has copy, drop, store {
+        id: u8,
+        decimal_multiplier: u64,
+        notional_value: u64,
+        native_token: bool,
+    }
+
+    struct BridgeTokenCaps<phantom T> has key {
+        mint_cap: MintCapability<T>,
+        burn_cap: BurnCapability<T>
+    }
+
+    struct ForeignTokenRegistration has store {
+        type_name: vector<u8>,
+        decimal: u8,
+    }
+
+    struct UpdateTokenPriceEvent has store, copy, drop {
+        token_id: u8,
+        new_price: u64,
+    }
+
+    struct NewTokenEvent has store, copy, drop {
+        token_id: u8,
+        type_name: vector<u8>,
+        native_token: bool,
+        decimal_multiplier: u64,
+        notional_value: u64,
+    }
+
+    struct TokenRegistrationEvent has store, copy, drop {
+        type_name: vector<u8>,
+        decimal: u8,
+        native_token: bool,
+    }
+
+    struct EventHandler has key {
+        update_token_price_event_handler: Event::EventHandle<UpdateTokenPriceEvent>,
+        new_token_event_handler: Event::EventHandle<NewTokenEvent>,
+        token_registration_event_handler: Event::EventHandle<TokenRegistrationEvent>,
+    }
+
+    public fun token_id<T: store>(self: &BridgeTreasury): u8 {
+        let metadata = Self::get_token_metadata<T>(self);
+        metadata.id
+    }
+
+    public fun decimal_multiplier<T: store>(self: &BridgeTreasury): u64 {
+        let metadata = Self::get_token_metadata<T>(self);
+        metadata.decimal_multiplier
+    }
+
+    public fun notional_value<T: store>(self: &BridgeTreasury): u64 {
+        let metadata = Self::get_token_metadata<T>(self);
+        metadata.notional_value
+    }
+
+    public fun initialize(bridge_admin: &signer) {
+        move_to(bridge_admin, EventHandler {
+            update_token_price_event_handler: Event::new_event_handle<UpdateTokenPriceEvent>(bridge_admin),
+            new_token_event_handler: Event::new_event_handle<NewTokenEvent>(bridge_admin),
+            token_registration_event_handler: Event::new_event_handle<TokenRegistrationEvent>(bridge_admin),
+        })
+    }
+
+    //////////////////////////////////////////////////////
+    // Internal functions
     //
-    // struct BridgeTreasury has store {
-    //     // token treasuries, values are TreasuryCaps for native bridge V1.
-    //     treasuries: ObjectBag,
-    //     supported_tokens: VecMap<TypeName, BridgeTokenMetadata>,
-    //     // Mapping token id to type name
-    //     id_token_type_map: VecMap<u8, TypeName>,
-    //     // Bag for storing potential new token waiting to be approved
-    //     waiting_room: Bag,
-    // }
-    //
-    // struct BridgeTokenMetadata has copy, drop, store {
-    //     id: u8,
-    //     decimal_multiplier: u64,
-    //     notional_value: u64,
-    //     native_token: bool,
-    // }
-    //
-    // struct ForeignTokenRegistration has store {
-    //     type_name: TypeName,
-    //     uc: UpgradeCap,
-    //     decimal: u8,
-    // }
-    //
-    // struct UpdateTokenPriceEvent has copy, drop {
-    //     token_id: u8,
-    //     new_price: u64,
-    // }
-    //
-    // struct NewTokenEvent has copy, drop {
-    //     token_id: u8,
-    //     type_name: TypeName,
-    //     native_token: bool,
-    //     decimal_multiplier: u64,
-    //     notional_value: u64,
-    // }
-    //
-    // struct TokenRegistrationEvent has copy, drop {
-    //     type_name: TypeName,
-    //     decimal: u8,
-    //     native_token: bool,
-    // }
-    //
-    // public fun token_id<T>(self: &BridgeTreasury): u8 {
-    //     let metadata = self.get_token_metadata < T > ();
-    //     metadata.id
-    // }
-    //
-    // public fun decimal_multiplier<T>(self: &BridgeTreasury): u64 {
-    //     let metadata = self.get_token_metadata < T > ();
-    //     metadata.decimal_multiplier
-    // }
-    //
-    // public fun notional_value<T>(self: &BridgeTreasury): u64 {
-    //     let metadata = self.get_token_metadata < T > ();
-    //     metadata.notional_value
-    // }
-    //
-    // //////////////////////////////////////////////////////
-    // // Internal functions
-    // //
-    //
-    // public entry fun register_foreign_token<T>(
-    //     self: &mut BridgeTreasury,
-    //     tc: TreasuryCap<T>,
-    //     uc: UpgradeCap,
-    //     metadata: &CoinMetadata<T>,
-    // ) {
-    //     // Make sure TreasuryCap has not been minted before.
-    //     assert!(coin::total_supply(&tc) == 0, ETokenSupplyNonZero);
-    //     let type_name = type_name::with_defining_ids<T>();
-    //     let address_bytes = hex::decode(ascii::into_bytes(type_name::address_string(&type_name)));
-    //     let coin_address = address::from_bytes(address_bytes);
-    //     // Make sure upgrade cap is for the Coin package
-    //     // FIXME: add test
-    //     assert!(
-    //         object::id_to_address(&package::upgrade_package(&uc)) == coin_address,
-    //         EInvalidUpgradeCap,
-    //     );
-    //     let registration = ForeignTokenRegistration {
-    //         type_name,
-    //         uc,
-    //         decimal: coin::get_decimals(metadata),
-    //     };
-    //     self.waiting_room.add(type_name::into_string(type_name), registration);
-    //     self.treasuries.add(type_name, tc);
-    //
-    //     event::emit(TokenRegistrationEvent {
-    //         type_name,
-    //         decimal: coin::get_decimals(metadata),
-    //         native_token: false,
-    //     });
-    // }
-    //
+    fun get_decimal<T: store>(): u8 {
+        // TODO(VR): to calculate decimal
+        // Token::scaling_factor<T>()
+        9
+    }
+
+
+    public fun register_foreign_token<T: store>(
+        bridge: &signer,
+        _self: &mut BridgeTreasury,
+        mint_cap: MintCapability<T>,
+        burn_cap: BurnCapability<T>,
+    ) acquires EventHandler {
+        // Make sure TreasuryCap has not been minted before.
+        assert!(Token::market_cap<T>() == 0, ETokenSupplyNonZero);
+        assert!(Signer::address_of(bridge) == @Bridge, EInvalidSigner);
+
+        let type_name = BCS::to_bytes(&Token::token_code<T>());
+
+        // TODO(VR): add to waitting room
+        // let registration = ForeignTokenRegistration {
+        //     type_name,
+        //     decimal: Self::get_decimal<T>(),
+        // };
+        // self.waiting_room.add(type_name::into_string(type_name), registration);
+
+        move_to(bridge, BridgeTokenCaps<T> {
+            mint_cap,
+            burn_cap,
+        });
+
+        let eh = borrow_global_mut<EventHandler>(@Bridge);
+        Event::emit_event(&mut eh.token_registration_event_handler, TokenRegistrationEvent {
+            type_name,
+            decimal: Self::get_decimal<T>(),
+            native_token: false,
+        });
+    }
+
+
     // public entry fun add_new_token(
     //     self: &mut BridgeTreasury,
-    //     token_name: String,
+    //     token_name: vector<u8>,
     //     token_id: u8,
     //     native_token: bool,
     //     notional_value: u64,
@@ -185,12 +216,10 @@ module Bridge::Treasury {
     //     })
     // }
     //
-    // fun get_token_metadata<T>(self: &BridgeTreasury): BridgeTokenMetadata {
-    //     let coin_type = type_name::with_defining_ids<T>();
-    //     let metadata = self.supported_tokens.try_get(&coin_type);
-    //     assert!(metadata.is_some(), EUnsupportedTokenType);
-    //     metadata.destroy_some()
-    // }
+    fun get_token_metadata<T: store>(self: &BridgeTreasury): BridgeTokenMetadata {
+        let coin_type = Token::canonicalize(&Token::token_code<T>());
+        *SimpleMap::borrow(&self.supported_tokens, &coin_type)
+    }
     //
     // //////////////////////////////////////////////////////
     // // Test functions

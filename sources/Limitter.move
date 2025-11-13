@@ -2,12 +2,8 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Limitter {
-
-    // use bridge::chain_ids::{Self, BridgeRoute};
-    // use bridge::treasury::BridgeTreasury;
-    // use sui::clock::{Self, Clock};
-    // use sui::event;
-    // use sui::vec_map::{Self, VecMap};
+    use Bridge::ChainIDs::BridgeRoute;
+    use StarcoinFramework::SimpleMap::{Self, SimpleMap};
 
     const ELimitNotFoundForRoute: u64 = 0;
 
@@ -16,41 +12,38 @@ module Bridge::Limitter {
 
     const USD_VALUE_MULTIPLIER: u64 = 100000000; // 8 DP accuracy
 
-    // //////////////////////////////////////////////////////
-    // // Types
-    // //
+    //////////////////////////////////////////////////////
+    // Types
     //
-    // struct TransferLimiter has store {
-    //     transfer_limits: VecMap<BridgeRoute, u64>,
-    //     // Per hour transfer amount for each bridge route
-    //     transfer_records: VecMap<BridgeRoute, TransferRecord>,
-    // }
+
+    struct TransferLimiter has store {
+        transfer_limits: SimpleMap<BridgeRoute, u64>,
+        // Per hour transfer amount for each bridge route
+        transfer_records: SimpleMap<BridgeRoute, TransferRecord>,
+    }
+
+    struct TransferRecord has store {
+        hour_head: u64,
+        hour_tail: u64,
+        per_hour_amounts: vector<u64>,
+        // total amount in USD, 4 DP accuracy, so 10000 => 1USD
+        total_amount: u64,
+    }
+
+    struct UpdateRouteLimitEvent has copy, drop {
+        sending_chain: u8,
+        receiving_chain: u8,
+        new_limit: u64,
+    }
+
+    //////////////////////////////////////////////////////
+    // Public functions
     //
-    //
-    // struct TransferRecord has store {
-    //     hour_head: u64,
-    //     hour_tail: u64,
-    //     per_hour_amounts: vector<u64>,
-    //     // total amount in USD, 4 DP accuracy, so 10000 => 1USD
-    //     total_amount: u64,
-    // }
-    //
-    // public
-    //
-    // struct UpdateRouteLimitEvent has copy, drop {
-    //     sending_chain: u8,
-    //     receiving_chain: u8,
-    //     new_limit: u64,
-    // }
-    //
-    // //////////////////////////////////////////////////////
-    // // Public functions
-    // //
-    //
-    // // Abort if the route limit is not found
-    // public fun get_route_limit(self: &TransferLimiter, route: &BridgeRoute): u64 {
-    //     self.transfer_limits[route]
-    // }
+
+    // Abort if the route limit is not found
+    public fun get_route_limit(self: &TransferLimiter, route: &BridgeRoute): u64 {
+        *SimpleMap::borrow(&self.transfer_limits, route)
+    }
     //
     // //////////////////////////////////////////////////////
     // // Internal functions

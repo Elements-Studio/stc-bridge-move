@@ -2,6 +2,14 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Bridge {
+    use Bridge::Committee::BridgeCommittee;
+    use Bridge::Limitter::TransferLimiter;
+    use Bridge::Message::{BridgeMessage, BridgeMessageKey};
+    use Bridge::Treasury::BridgeTreasury;
+
+    use StarcoinFramework::Option::Option;
+    use StarcoinFramework::SimpleMap::SimpleMap;
+
     const MESSAGE_VERSION: u8 = 1;
 
     // Transfer Status
@@ -12,72 +20,72 @@ module Bridge::Bridge {
 
     const EVM_ADDRESS_LENGTH: u64 = 20;
 
-    //////////////////////////////////////////////////////
+    ////////////////////////////////////////////////////
     // Types
-    //
-    //
-    // struct Bridge has key {
-    //     id: address, // owner
-    //     inner: Versioned,
-    // }
-    //
-    // struct BridgeInner has store {
-    //     bridge_version: u64,
-    //     message_version: u8,
-    //     chain_id: u8,
-    //     // nonce for replay protection
-    //     // key: message type, value: next sequence number
-    //     sequence_nums: Table<u8, u64>,
-    //     // committee
-    //     committee: BridgeCommittee,
-    //     // Bridge treasury for mint/burn bridged tokens
-    //     treasury: BridgeTreasury,
-    //     token_transfer_records: LinkedTable<BridgeMessageKey, BridgeRecord>,
-    //     limiter: TransferLimiter,
-    //     paused: bool,
-    // }
-    //
-    // struct TokenDepositedEvent has copy, drop {
-    //     seq_num: u64,
-    //     source_chain: u8,
-    //     sender_address: vector<u8>,
-    //     target_chain: u8,
-    //     target_address: vector<u8>,
-    //     token_type: u8,
-    //     amount: u64,
-    // }
-    //
-    // struct EmergencyOpEvent has copy, drop {
-    //     frozen: bool,
-    // }
-    //
-    // struct BridgeRecord has drop, store {
-    //     message: BridgeMessage,
-    //     verified_signatures: Option<vector<vector<u8>>>,
-    //     claimed: bool,
-    // }
-    //
-    // const EUnexpectedMessageType: u64 = 0;
-    // const EUnauthorisedClaim: u64 = 1;
-    // const EMalformedMessageError: u64 = 2;
-    // const EUnexpectedTokenType: u64 = 3;
-    // const EUnexpectedChainID: u64 = 4;
-    // const ENotSystemAddress: u64 = 5;
-    // const EUnexpectedSeqNum: u64 = 6;
-    // const EWrongInnerVersion: u64 = 7;
-    // const EBridgeUnavailable: u64 = 8;
-    // const EUnexpectedOperation: u64 = 9;
-    // const EInvariantSuiInitializedTokenTransferShouldNotBeClaimed: u64 = 10;
-    // const EMessageNotFoundInRecords: u64 = 11;
-    // const EUnexpectedMessageVersion: u64 = 12;
-    // const EBridgeAlreadyPaused: u64 = 13;
-    // const EBridgeNotPaused: u64 = 14;
-    // const ETokenAlreadyClaimedOrHitLimit: u64 = 15;
-    // const EInvalidBridgeRoute: u64 = 16;
-    // const EMustBeTokenMessage: u64 = 17;
-    // const EInvalidEvmAddress: u64 = 18;
-    // const ETokenValueIsZero: u64 = 19;
-    //
+
+    struct Bridge has key {
+        id: address, // owner
+        inner: u64, // version
+    }
+
+    struct BridgeInner has store {
+        bridge_version: u64,
+        message_version: u8,
+        chain_id: u8,
+        // nonce for replay protection
+        // key: message type, value: next sequence number
+        // sequence_nums: Table<u8, u64>, // TODO(VR): construct sequence numbers
+        // committee
+        committee: BridgeCommittee,
+        // Bridge treasury for mint/burn bridged tokens
+        treasury: BridgeTreasury,
+        // TODO(VR): replace as table
+        token_transfer_records: SimpleMap<BridgeMessageKey, BridgeRecord>,
+        limiter: TransferLimiter,
+        paused: bool,
+    }
+
+    struct TokenDepositedEvent has copy, drop {
+        seq_num: u64,
+        source_chain: u8,
+        sender_address: vector<u8>,
+        target_chain: u8,
+        target_address: vector<u8>,
+        token_type: u8,
+        amount: u64,
+    }
+
+    struct EmergencyOpEvent has copy, drop {
+        frozen: bool,
+    }
+
+    struct BridgeRecord has drop, store {
+        message: BridgeMessage,
+        verified_signatures: Option<vector<vector<u8>>>,
+        claimed: bool,
+    }
+
+    const EUnexpectedMessageType: u64 = 0;
+    const EUnauthorisedClaim: u64 = 1;
+    const EMalformedMessageError: u64 = 2;
+    const EUnexpectedTokenType: u64 = 3;
+    const EUnexpectedChainID: u64 = 4;
+    const ENotSystemAddress: u64 = 5;
+    const EUnexpectedSeqNum: u64 = 6;
+    const EWrongInnerVersion: u64 = 7;
+    const EBridgeUnavailable: u64 = 8;
+    const EUnexpectedOperation: u64 = 9;
+    const EInvariantSuiInitializedTokenTransferShouldNotBeClaimed: u64 = 10;
+    const EMessageNotFoundInRecords: u64 = 11;
+    const EUnexpectedMessageVersion: u64 = 12;
+    const EBridgeAlreadyPaused: u64 = 13;
+    const EBridgeNotPaused: u64 = 14;
+    const ETokenAlreadyClaimedOrHitLimit: u64 = 15;
+    const EInvalidBridgeRoute: u64 = 16;
+    const EMustBeTokenMessage: u64 = 17;
+    const EInvalidEvmAddress: u64 = 18;
+    const ETokenValueIsZero: u64 = 19;
+
     // const CURRENT_VERSION: u64 = 1;
     //
     //
