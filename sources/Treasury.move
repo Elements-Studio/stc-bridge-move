@@ -2,17 +2,21 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Treasury {
+    use StarcoinFramework::Math;
     use StarcoinFramework::BCS;
     use StarcoinFramework::Event;
     use StarcoinFramework::Signer;
     use StarcoinFramework::SimpleMap::{Self, SimpleMap};
-    use StarcoinFramework::Token::{Self, BurnCapability, MintCapability};
+    use StarcoinFramework::Token;
+
+    friend Bridge::Bridge;
 
     const EUnsupportedTokenType: u64 = 1;
     const EInvalidUpgradeCap: u64 = 2;
     const ETokenSupplyNonZero: u64 = 3;
     const EInvalidNotionalValue: u64 = 4;
     const EInvalidSigner: u64 = 5;
+    const ETreasuryTokenNotExists: u64 = 6;
 
     #[test_only]
     const USD_VALUE_MULTIPLIER: u64 = 100000000; // 8 DP accuracy
@@ -20,14 +24,14 @@ module Bridge::Treasury {
     //////////////////////////////////////////////////////
     // Types
     //
-    struct BridgeTreasury has store {
+    struct BridgeTreasury has key, store {
         // token treasuries, values are TreasuryCaps for native bridge V1.
         // treasuries: ObjectBag,
         supported_tokens: SimpleMap<vector<u8>, BridgeTokenMetadata>,
         // Mapping token id to type name
         id_token_type_map: SimpleMap<u8, vector<u8>>,
-        // Bag for storing potential new token waiting to be approved
-        // waiting_room: Bag,
+        // Storing potential new token waiting to be approved
+        waiting_room: SimpleMap<vector<u8>, ForeignTokenRegistration>,
     }
 
     struct BridgeTokenMetadata has copy, drop, store {
@@ -37,9 +41,9 @@ module Bridge::Treasury {
         native_token: bool,
     }
 
-    struct BridgeTokenCaps<phantom T> has key {
-        mint_cap: MintCapability<T>,
-        burn_cap: BurnCapability<T>
+    struct BridgeTreasuryCap<phantom T> has key {
+        mint_cap: Token::MintCapability<T>,
+        burn_cap: Token::BurnCapability<T>
     }
 
     struct ForeignTokenRegistration has store {
@@ -88,6 +92,14 @@ module Bridge::Treasury {
     }
 
     public fun initialize(bridge_admin: &signer) {
+        assert!(Signer::address_of(bridge_admin) == @Bridge, EInvalidSigner);
+        move_to(bridge_admin, BridgeTreasury {
+            // treasuries: object_bag::new(ctx),
+            supported_tokens: SimpleMap::create<vector<u8>, BridgeTokenMetadata>(),
+            id_token_type_map: SimpleMap::create<u8, vector<u8>>(),
+            waiting_room: SimpleMap::create<vector<u8>, ForeignTokenRegistration>(),
+        });
+
         move_to(bridge_admin, EventHandler {
             update_token_price_event_handler: Event::new_event_handle<UpdateTokenPriceEvent>(bridge_admin),
             new_token_event_handler: Event::new_event_handle<NewTokenEvent>(bridge_admin),
@@ -107,9 +119,9 @@ module Bridge::Treasury {
 
     public fun register_foreign_token<T: store>(
         bridge: &signer,
-        _self: &mut BridgeTreasury,
-        mint_cap: MintCapability<T>,
-        burn_cap: BurnCapability<T>,
+        self: &mut BridgeTreasury,
+        mint_cap: Token::MintCapability<T>,
+        burn_cap: Token::BurnCapability<T>,
     ) acquires EventHandler {
         // Make sure TreasuryCap has not been minted before.
         assert!(Token::market_cap<T>() == 0, ETokenSupplyNonZero);
@@ -117,14 +129,12 @@ module Bridge::Treasury {
 
         let type_name = BCS::to_bytes(&Token::token_code<T>());
 
-        // TODO(VR): add to waitting room
-        // let registration = ForeignTokenRegistration {
-        //     type_name,
-        //     decimal: Self::get_decimal<T>(),
-        // };
-        // self.waiting_room.add(type_name::into_string(type_name), registration);
+        SimpleMap::add(&mut self.waiting_room, type_name, ForeignTokenRegistration {
+            type_name,
+            decimal: Self::get_decimal<T>(),
+        });
 
-        move_to(bridge, BridgeTokenCaps<T> {
+        move_to(bridge, BridgeTreasuryCap<T> {
             mint_cap,
             burn_cap,
         });
@@ -137,85 +147,74 @@ module Bridge::Treasury {
         });
     }
 
+    public fun add_new_token(
+        self: &mut BridgeTreasury,
+        token_name: vector<u8>,
+        token_id: u8,
+        notional_value: u64,
+    ) acquires EventHandler {
+        assert!(notional_value > 0, EInvalidNotionalValue);
+        let (_key, ForeignTokenRegistration {
+            type_name,
+            decimal,
+        }) = SimpleMap::remove(&mut self.waiting_room, &token_name);
 
-    // public entry fun add_new_token(
-    //     self: &mut BridgeTreasury,
-    //     token_name: vector<u8>,
-    //     token_id: u8,
-    //     native_token: bool,
-    //     notional_value: u64,
-    // ) {
-    //     if (!native_token) {
-    //         assert!(notional_value > 0, EInvalidNotionalValue);
-    //         let ForeignTokenRegistration {
-    //             type_name,
-    //             uc,
-    //             decimal,
-    //         } = self.waiting_room.remove < String, ForeignTokenRegistration>(token_name);
-    //         let decimal_multiplier = 10u64.pow(decimal);
-    //         self
-    //         .supported_tokens
-    //         .insert(
-    //         type_name,
-    //         BridgeTokenMetadata {
-    //         id: token_id,
-    //         decimal_multiplier,
-    //         notional_value,
-    //         native_token,
-    //         },
-    //         );
-    //         self.id_token_type_map.insert(token_id, type_name);
-    //
-    //         // Freeze upgrade cap to prevent changes to the coin
-    //         transfer::public_freeze_object(uc);
-    //
-    //         event::emit(NewTokenEvent {
-    //         token_id,
-    //         type_name,
-    //         native_token,
-    //         decimal_multiplier,
-    //         notional_value,
-    //         })
-    //     } // else not implemented in V1
-    // }
-    //
-    // public entry fun create(ctx: &mut TxContext): BridgeTreasury {
-    //     BridgeTreasury {
-    //         treasuries: object_bag::new(ctx),
-    //         supported_tokens: vec_map::empty(),
-    //         id_token_type_map: vec_map::empty(),
-    //         waiting_room: bag::new(ctx),
-    //     }
-    // }
-    //
-    // public entry fun burn<T>(self: &mut BridgeTreasury, token: Coin<T>) {
-    //     let treasury = &mut self.treasuries[type_name::with_defining_ids<T>()];
-    //     coin::burn(treasury, token);
-    // }
-    //
-    // public entry fun mint<T>(self: &mut BridgeTreasury, amount: u64, ctx: &mut TxContext): Coin<T> {
-    //     let treasury = &mut self.treasuries[type_name::with_defining_ids<T>()];
-    //     coin::mint(treasury, amount, ctx)
-    // }
-    //
-    // public entry fun update_asset_notional_price(
-    //     self: &mut BridgeTreasury,
-    //     token_id: u8,
-    //     new_usd_price: u64,
-    // ) {
-    //     let type_name = self.id_token_type_map.try_get(&token_id);
-    //     assert!(type_name.is_some(), EUnsupportedTokenType);
-    //     assert!(new_usd_price > 0, EInvalidNotionalValue);
-    //     let type_name = type_name.destroy_some();
-    //     let metadata = self.supported_tokens.get_mut(&type_name);
-    //     metadata.notional_value = new_usd_price;
-    //
-    //     event::emit(UpdateTokenPriceEvent {
-    //         token_id,
-    //         new_price: new_usd_price,
-    //     })
-    // }
-    //
+        let decimal_multiplier = (Math::pow(10u64, (decimal as u64)) as u64);
+        let token_metadata = BridgeTokenMetadata {
+            id: token_id,
+            decimal_multiplier,
+            notional_value,
+            native_token: false,
+        };
+
+        SimpleMap::add(&mut self.supported_tokens, type_name, token_metadata);
+        SimpleMap::add(&mut self.id_token_type_map, token_id, type_name);
+
+        // TODO(VR): to confirm upgrade cap
+        // // Freeze upgrade cap to prevent changes to the coin
+        // transfer::public_freeze_object(uc);
+
+        let event_handler = borrow_global_mut<EventHandler>(@Bridge);
+        Event::emit_event(&mut event_handler.new_token_event_handler, NewTokenEvent {
+            token_id,
+            type_name,
+            native_token: false,
+            decimal_multiplier,
+            notional_value,
+        })
+    }
+
+    public(friend) fun burn<T: store>(token: Token::Token<T>) acquires BridgeTreasuryCap {
+        assert!(exists<BridgeTreasuryCap<T>>(@Bridge), ETreasuryTokenNotExists);
+        let tt = borrow_global_mut<BridgeTreasuryCap<T>>(@Bridge);
+        Token::burn_with_capability<T>(&tt.burn_cap, token);
+    }
+
+    public(friend) fun mint<T: store>(amount: u64): Token::Token<T> acquires BridgeTreasuryCap {
+        assert!(exists<BridgeTreasuryCap<T>>(@Bridge), ETreasuryTokenNotExists);
+        let tt = borrow_global_mut<BridgeTreasuryCap<T>>(@Bridge);
+        Token::mint_with_capability<T>(&tt.mint_cap, (amount as u128))
+    }
+
+    public fun update_asset_notional_price(
+        self: &mut BridgeTreasury,
+        token_id: u8,
+        new_usd_price: u64,
+    ) acquires EventHandler {
+        let type_name = SimpleMap::borrow(&self.id_token_type_map, &token_id);
+        // assert!(type_name.is_some(), EUnsupportedTokenType);
+        assert!(new_usd_price > 0, EInvalidNotionalValue);
+        let metadata = SimpleMap::borrow_mut(&mut self.supported_tokens, type_name);
+        metadata.notional_value = new_usd_price;
+
+        let eh = borrow_global_mut<EventHandler>(@Bridge);
+        Event::emit_event(&mut eh.update_token_price_event_handler, UpdateTokenPriceEvent {
+            token_id,
+            new_price: new_usd_price,
+        })
+    }
+
+
     fun get_token_metadata<T: store>(self: &BridgeTreasury): BridgeTokenMetadata {
         let coin_type = Token::canonicalize(&Token::token_code<T>());
         *SimpleMap::borrow(&self.supported_tokens, &coin_type)
