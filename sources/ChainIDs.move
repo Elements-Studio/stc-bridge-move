@@ -31,6 +31,14 @@ module Bridge::ChainIDs {
 
     public fun eth_custom(): u8 { ETH_CUSTOM }
 
+    public fun starcoin_mainnet(): u8 { ChainId::main() }
+
+    public fun starcoin_testnet(): u8 { ChainId::test() }
+
+    public fun starcoin_devnet(): u8 { ChainId::dev() }
+
+    public fun starcoin_barnard(): u8 { ChainId::barnard() }
+
 
     public fun route_source(route: &BridgeRoute): &u8 {
         &route.source

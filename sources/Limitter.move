@@ -2,7 +2,10 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Limitter {
-    use Bridge::ChainIDs::BridgeRoute;
+    use Bridge::Treasury;
+    use StarcoinFramework::Vector;
+    use Bridge::ChainIDs::{Self, BridgeRoute};
+    use Bridge::Treasury::BridgeTreasury;
     use StarcoinFramework::SimpleMap::{Self, SimpleMap};
 
     const ELimitNotFoundForRoute: u64 = 0;
@@ -44,78 +47,78 @@ module Bridge::Limitter {
     public fun get_route_limit(self: &TransferLimiter, route: &BridgeRoute): u64 {
         *SimpleMap::borrow(&self.transfer_limits, route)
     }
+
+    //////////////////////////////////////////////////////
+    // Internal functions
     //
-    // //////////////////////////////////////////////////////
-    // // Internal functions
-    // //
-    //
-    // public entry fun new(): TransferLimiter {
-    //     // hardcoded limit for bridge genesis
-    //     TransferLimiter {
-    //         transfer_limits: initial_transfer_limits(),
-    //         transfer_records: vec_map::empty(),
-    //     }
-    // }
-    //
-    // public entry fun check_and_record_sending_transfer<T>(
-    //     self: &mut TransferLimiter,
-    //     treasury: &BridgeTreasury,
-    //     clock: &Clock,
-    //     route: BridgeRoute,
-    //     amount: u64,
-    // ): bool {
-    //     // Create record for route if not exists
-    //     if (!self.transfer_records.contains(&route)) {
-    //         self
-    //             .transfer_records
-    //             .insert(
-    //                 route,
-    //                 TransferRecord {
-    //                     hour_head: 0,
-    //                     hour_tail: 0,
-    //                     per_hour_amounts: vector[],
-    //                     total_amount: 0,
-    //                 },
-    //             )
-    //     };
-    //     let record = self.transfer_records.get_mut(&route);
-    //     let current_hour_since_epoch = current_hour_since_epoch(clock);
-    //
-    //     record.adjust_transfer_records(current_hour_since_epoch);
-    //
-    //     // Get limit for the route
-    //     let route_limit = self.transfer_limits.try_get(&route);
-    //     assert!(route_limit.is_some(), ELimitNotFoundForRoute);
-    //     let route_limit = route_limit.destroy_some();
-    //     let route_limit_adjusted = (route_limit as u128) * (treasury.decimal_multiplier < T > () as u128);
-    //
-    //     // Compute notional amount
-    //     // Upcast to u128 to prevent overflow, to not miss out on small amounts.
-    //     let value = (treasury.notional_value < T > () as u128);
-    //     let notional_amount_with_token_multiplier = value * (amount as u128);
-    //
-    //     // Check if transfer amount exceed limit
-    //     // Upscale them to the token's decimal.
-    //     if (
-    //         (record.total_amount as u128)
-    //             * (treasury.decimal_multiplier < T > () as u128)
-    //             + notional_amount_with_token_multiplier > route_limit_adjusted
-    //     ) {
-    //         return false
-    //     };
-    //
-    //     // Now scale down to notional value
-    //     let notional_amount =
-    //         notional_amount_with_token_multiplier / (treasury.decimal_multiplier < T > () as u128);
-    //     // Should be safe to downcast to u64 after dividing by the decimals
-    //     let notional_amount = (notional_amount as u64);
-    //
-    //     // Record transfer value
-    //     let new_amount = record.per_hour_amounts.pop_back() + notional_amount;
-    //     record.per_hour_amounts.push_back(new_amount);
-    //     record.total_amount = record.total_amount + notional_amount;
-    //     true
-    // }
+    public fun new(): TransferLimiter {
+        // hardcoded limit for bridge genesis
+        TransferLimiter {
+            transfer_limits: initial_transfer_limits(),
+            transfer_records: SimpleMap::create(),
+        }
+    }
+
+    public fun check_and_record_sending_transfer<T: store>(
+        self: &mut TransferLimiter,
+        treasury: &BridgeTreasury,
+        clock_timestamp_ms: u64,
+        route: BridgeRoute,
+        amount: u64,
+    ): bool {
+        // Create record for route if not exists
+        if (!SimpleMap::contains_key(&self.transfer_records, &route)) {
+            SimpleMap::add(&mut self.transfer_records,
+                route,
+                TransferRecord {
+                    hour_head: 0,
+                    hour_tail: 0,
+                    per_hour_amounts: vector[],
+                    total_amount: 0,
+                },
+            )
+        };
+
+        let record = SimpleMap::borrow_mut(&mut self.transfer_records, &route);
+        let current_hour_since_epoch = Self::current_hour_since_epoch(clock_timestamp_ms);
+
+        Self::adjust_transfer_records(record, current_hour_since_epoch);
+
+        // Get limit for the route
+        let route_limit = SimpleMap::borrow(&mut self.transfer_limits, &route);
+        // assert!route_limit.is_some(), ELimitNotFoundForRoute);
+        // let route_limit = route_limit.destroy_some();
+
+        let route_limit_adjusted = (*route_limit as u128) * (Treasury::decimal_multiplier<T>(treasury) as u128);
+
+        // Compute notional amount
+        // Upcast to u128 to prevent overflow, to not miss out on small amounts.
+        let value = (Treasury::notional_value<T>(treasury) as u128);
+        let notional_amount_with_token_multiplier = value * (amount as u128);
+
+        // Check if transfer amount exceed limit
+        // Upscale them to the token's decimal.
+        if (
+            (record.total_amount as u128)
+                * (Treasury::decimal_multiplier<T>(treasury) as u128)
+                + notional_amount_with_token_multiplier > route_limit_adjusted
+        ) {
+            return false
+        };
+
+        // Now scale down to notional value
+        let notional_amount =
+            notional_amount_with_token_multiplier / (Treasury::decimal_multiplier<T>(treasury) as u128);
+        // Should be safe to downcast to u64 after dividing by the decimals
+        let notional_amount = (notional_amount as u64);
+
+        // Record transfer value
+        let new_amount = Vector::pop_back(&mut record.per_hour_amounts) + notional_amount;
+        Vector::push_back(&mut record.per_hour_amounts, new_amount);
+        record.total_amount = record.total_amount + notional_amount;
+        true
+    }
+
     //
     // public entry fun update_route_limit(
     //     self: &mut TransferLimiter,
@@ -138,77 +141,84 @@ module Bridge::Limitter {
     // }
     //
     // // Current hour since unix epoch
-    // fun current_hour_since_epoch(clock: &Clock): u64 {
-    //     clock::timestamp_ms(clock) / 3600000
-    // }
+    fun current_hour_since_epoch(clock_timestamp_ms: u64): u64 {
+        clock_timestamp_ms / 3600000
+    }
+
     //
-    // fun adjust_transfer_records(self: &mut TransferRecord, current_hour_since_epoch: u64) {
-    //     if (self.hour_head == current_hour_since_epoch) {
-    //         return // nothing to backfill
-    //     };
+    fun adjust_transfer_records(self: &mut TransferRecord, current_hour_since_epoch: u64) {
+        if (self.hour_head == current_hour_since_epoch) {
+            return // nothing to backfill
+        };
+
+        let target_tail = current_hour_since_epoch - 23;
+
+        // If `hour_head` is even older than 24 hours ago, it means all items in
+        // `per_hour_amounts` are to be evicted.
+        if (self.hour_head < target_tail) {
+            self.per_hour_amounts = vector[];
+            self.total_amount = 0;
+            self.hour_tail = target_tail;
+            self.hour_head = target_tail;
+            // Don't forget to insert this hour's record
+            Vector::push_back(&mut self.per_hour_amounts, 0);
+        } else {
+            // self.hour_head is within 24 hour range.
+            // some items in `per_hour_amounts` are still valid, we remove stale hours.
+            while (self.hour_tail < target_tail) {
+                self.total_amount = self.total_amount - Vector::remove(&mut self.per_hour_amounts, 0);
+                self.hour_tail = self.hour_tail + 1;
+            }
+        };
+
+        // Backfill from hour_head to current hour
+        while (self.hour_head < current_hour_since_epoch) {
+            Vector::push_back(&mut self.per_hour_amounts, 0);
+            self.hour_head = self.hour_head + 1;
+        }
+    }
+
     //
-    //     let target_tail = current_hour_since_epoch - 23;
-    //
-    //     // If `hour_head` is even older than 24 hours ago, it means all items in
-    //     // `per_hour_amounts` are to be evicted.
-    //     if (self.hour_head < target_tail) {
-    //         self.per_hour_amounts = vector[];
-    //         self.total_amount = 0;
-    //         self.hour_tail = target_tail;
-    //         self.hour_head = target_tail;
-    //         // Don't forget to insert this hour's record
-    //         self.per_hour_amounts.push_back(0);
-    //     } else {
-    //         // self.hour_head is within 24 hour range.
-    //         // some items in `per_hour_amounts` are still valid, we remove stale hours.
-    //         while (self.hour_tail < target_tail) {
-    //             self.total_amount = self.total_amount - self.per_hour_amounts.remove(0);
-    //             self.hour_tail = self.hour_tail + 1;
-    //         }
-    //     };
-    //
-    //     // Backfill from hour_head to current hour
-    //     while (self.hour_head < current_hour_since_epoch) {
-    //         self.per_hour_amounts.push_back(0);
-    //         self.hour_head = self.hour_head + 1;
-    //     }
-    // }
-    //
-    // // It's tedious to list every pair, but it's safer to do so so we don't
-    // // accidentally turn off limiter for a new production route in the future.
-    // // Note limiter only takes effects on the receiving chain, so we only need to
-    // // specify routes from Ethereum to Sui.
-    // fun initial_transfer_limits(): VecMap<BridgeRoute, u64> {
-    //     let transfer_limits = vec_map::empty();
-    //     // 5M limit on Sui -> Ethereum mainnet
-    //     transfer_limits.insert(
-    //     chain_ids::get_route(chain_ids::eth_mainnet(), chain_ids::sui_mainnet()),
-    //     5_000_000 * USD_VALUE_MULTIPLIER,
-    //     );
-    //
-    //     // MAX limit for testnet and devnet
-    //     transfer_limits.insert(
-    //     chain_ids::get_route(chain_ids::eth_sepolia(), chain_ids::sui_testnet()),
-    //     MAX_TRANSFER_LIMIT,
-    //     );
-    //
-    //     transfer_limits.insert(
-    //     chain_ids::get_route(chain_ids::eth_sepolia(), chain_ids::sui_custom()),
-    //     MAX_TRANSFER_LIMIT,
-    //     );
-    //
-    //     transfer_limits.insert(
-    //     chain_ids::get_route(chain_ids::eth_custom(), chain_ids::sui_testnet()),
-    //     MAX_TRANSFER_LIMIT,
-    //     );
-    //
-    //     transfer_limits.insert(
-    //     chain_ids::get_route(chain_ids::eth_custom(), chain_ids::sui_custom()),
-    //     MAX_TRANSFER_LIMIT,
-    //     );
-    //
-    //     transfer_limits
-    // }
+    // It's tedious to list every pair, but it's safer to do so so we don't
+    // accidentally turn off limiter for a new production route in the future.
+    // Note limiter only takes effects on the receiving chain, so we only need to
+    // specify routes from Ethereum to Sui.
+    fun initial_transfer_limits(): SimpleMap<BridgeRoute, u64> {
+        let transfer_limits = SimpleMap::create<BridgeRoute, u64>();
+        // 5M limit on Sui -> Ethereum mainnet
+        SimpleMap::add(
+            &mut transfer_limits,
+            ChainIDs::get_route(ChainIDs::eth_mainnet(), ChainIDs::starcoin_mainnet()),
+            5_000_000 * USD_VALUE_MULTIPLIER,
+        );
+
+        // MAX limit for testnet and devnet
+        SimpleMap::add(
+            &mut transfer_limits,
+            ChainIDs::get_route(ChainIDs::eth_sepolia(), ChainIDs::starcoin_testnet()),
+            MAX_TRANSFER_LIMIT,
+        );
+
+        SimpleMap::add(
+            &mut transfer_limits,
+            ChainIDs::get_route(ChainIDs::eth_sepolia(), ChainIDs::starcoin_devnet()),
+            MAX_TRANSFER_LIMIT,
+        );
+
+        SimpleMap::add(
+            &mut transfer_limits,
+            ChainIDs::get_route(ChainIDs::eth_custom(), ChainIDs::starcoin_testnet()),
+            MAX_TRANSFER_LIMIT,
+        );
+
+        SimpleMap::add(
+            &mut transfer_limits,
+            ChainIDs::get_route(ChainIDs::eth_custom(), ChainIDs::starcoin_devnet()),
+            MAX_TRANSFER_LIMIT,
+        );
+
+        transfer_limits
+    }
     //
     // //////////////////////////////////////////////////////
     // // Test functions
