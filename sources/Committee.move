@@ -3,7 +3,15 @@
 
 module Bridge::Committee {
 
+    use Bridge::EcdsaK1;
+    use Bridge::Crypto;
+    use Bridge::Message::{Self, Blocklist, BridgeMessage};
+    use StarcoinFramework::Errors;
+    use StarcoinFramework::Event;
+    use StarcoinFramework::Signer;
+    use StarcoinFramework::SimpleMap;
     use StarcoinFramework::SimpleMap::SimpleMap;
+    use StarcoinFramework::Vector;
 
     const ESignatureBelowThreshold: u64 = 0;
     const EDuplicatedSignature: u64 = 1;
@@ -16,19 +24,20 @@ module Bridge::Committee {
     const EDuplicatePubkey: u64 = 8;
     const ESenderIsNotInBridgeCommittee: u64 = 9;
 
-    const SUI_MESSAGE_PREFIX: vector<u8> = b"STARCOIN_BRIDGE_MESSAGE";
+    const STARCOIN_MESSAGE_PREFIX: vector<u8> = b"STARCOIN_BRIDGE_MESSAGE";
 
     const ECDSA_COMPRESSED_PUBKEY_LENGTH: u64 = 33;
 
     //////////////////////////////////////////////////////
     // Types
     //
-    struct BlocklistValidatorEvent has copy, drop {
+    struct BlocklistValidatorEvent has copy, drop, store {
         blocklisted: bool,
         public_keys: vector<vector<u8>>,
     }
 
     struct BridgeCommittee has store {
+        // commitee pub key and weight
         // commitee pub key and weight
         members: SimpleMap<vector<u8>, CommitteeMember>,
         // Committee member registrations for the next committee creation.
@@ -38,21 +47,28 @@ module Bridge::Committee {
         // This is mainly for verification/auditing purposes, it might not be useful for bridge operations.
         last_committee_update_epoch: u64,
     }
-    //
-    // struct CommitteeUpdateEvent has copy, drop {
-    //     // commitee pub key and weight
-    //     members: VecMap<vector<u8>, CommitteeMember>,
-    //     stake_participation_percentage: u64,
-    // }
-    //
-    // struct CommitteeMemberUrlUpdateEvent has copy, drop {
-    //     member: vector<u8>,
-    //     new_url: vector<u8>,
-    // }
+
+    struct EventHandlePod has key, store {
+        committee_member_registration: Event::EventHandle<CommitteeMemberRegistration>,
+        committee_update_event: Event::EventHandle<CommitteeUpdateEvent>,
+        committee_member_url_update_event: Event::EventHandle<CommitteeMemberUrlUpdateEvent>,
+        block_list_validator_event: Event::EventHandle<BlocklistValidatorEvent>,
+    }
+
+    struct CommitteeUpdateEvent has copy, drop, store {
+        // commitee pub key and weight
+        members: SimpleMap<vector<u8>, CommitteeMember>,
+        stake_participation_percentage: u64,
+    }
+
+    struct CommitteeMemberUrlUpdateEvent has copy, drop, store {
+        member: vector<u8>,
+        new_url: vector<u8>,
+    }
 
     struct CommitteeMember has copy, drop, store {
         /// The Sui Address of the validator
-        sui_address: address,
+        starcoin_address: address,
         /// The public key bytes of the bridge key
         bridge_pubkey_bytes: vector<u8>,
         /// Voting power, values are voting power in the scale of 10000.
@@ -65,245 +81,273 @@ module Bridge::Committee {
     }
 
     struct CommitteeMemberRegistration has copy, drop, store {
-        /// The Sui Address of the validator
-        sui_address: address,
+        /// The Starcoin Address of the validator
+        starcoin_address: address,
         /// The public key bytes of the bridge key
         bridge_pubkey_bytes: vector<u8>,
         /// The HTTP REST URL the member's node listens to
         /// it looks like b'https://127.0.0.1:9191'
         http_rest_url: vector<u8>,
     }
+
+    //////////////////////////////////////////////////////
+    // Public functions
     //
-    // //////////////////////////////////////////////////////
-    // // Public functions
-    // //
+
+    public fun initialize(bridge: &signer) {
+        assert!(Signer::address_of(bridge) == @Bridge, Errors::requires_address(EInvalidSignature));
+        move_to(bridge, EventHandlePod {
+            committee_member_registration: Event::new_event_handle<CommitteeMemberRegistration>(bridge),
+            committee_update_event: Event::new_event_handle<CommitteeUpdateEvent>(bridge),
+            committee_member_url_update_event: Event::new_event_handle<CommitteeMemberUrlUpdateEvent>(bridge),
+            block_list_validator_event: Event::new_event_handle<BlocklistValidatorEvent>(bridge),
+        })
+    }
+
+
+    public fun verify_signatures(
+        self: &BridgeCommittee,
+        message: BridgeMessage,
+        signatures: vector<vector<u8>>,
+    ) {
+        let (i, signature_counts) = (0, Vector::length(&signatures));
+        let seen_pub_key = Vector::empty<vector<u8>>();
+        let required_voting_power = Message::required_voting_power(&message);
+        // add prefix to the message bytes
+        let message_bytes = STARCOIN_MESSAGE_PREFIX;
+        Vector::append(&mut message_bytes, Message::serialize_message(message));
+
+        let threshold = 0;
+        while (i < signature_counts) {
+            let pubkey = EcdsaK1::secp256k1_ecrecover(Vector::borrow(&signatures, i), &message_bytes, 0);
+
+            // check duplicate
+            // and make sure pub key is part of the committee
+            assert!(!Vector::contains(&seen_pub_key, &pubkey), Errors::invalid_state(EDuplicatedSignature));
+            assert!(SimpleMap::contains_key(&self.members, &pubkey), Errors::requires_address(EInvalidSignature));
+
+            // get committee signature weight and check pubkey is part of the committee
+            let member = SimpleMap::borrow(&self.members, &pubkey);
+            if (!member.blocklisted) {
+                threshold = threshold + member.voting_power;
+            };
+            Vector::push_back(&mut seen_pub_key, pubkey);
+            i = i + 1;
+        };
+        assert!(threshold >= required_voting_power, Errors::invalid_state(ESignatureBelowThreshold));
+    }
+
+    //////////////////////////////////////////////////////
+    // Internal functions
     //
-    // public fun verify_signatures(
-    //     self: &BridgeCommittee,
-    //     message: BridgeMessage,
-    //     signatures: vector<vector<u8>>,
-    // ) {
-    //     let (mut i, signature_counts) = (0, vector::length(&signatures));
-    //     let seen_pub_key = vec_set::empty<vector<u8>>();
-    //     let required_voting_power = message.required_voting_power();
-    //     // add prefix to the message bytes
-    //     let message_bytes = SUI_MESSAGE_PREFIX;
-    //     message_bytes.append(message.serialize_message());
-    //
-    //     let threshold = 0;
-    //     while (i < signature_counts) {
-    //     let pubkey = ecdsa_k1::secp256k1_ecrecover(&signatures[i], &message_bytes, 0);
-    //
-    //     // check duplicate
-    //     // and make sure pub key is part of the committee
-    //     assert!(!seen_pub_key.contains(&pubkey), EDuplicatedSignature);
-    //     assert!(self.members.contains(&pubkey), EInvalidSignature);
-    //
-    //     // get committee signature weight and check pubkey is part of the committee
-    //     let member = &self.members[&pubkey];
-    //     if (!member.blocklisted) {
-    //     threshold = threshold + member.voting_power;
-    //     };
-    //     seen_pub_key.insert(pubkey);
-    //     i = i + 1;
-    //     };
-    //
-    //     assert!(threshold > = required_voting_power, ESignatureBelowThreshold);
-    // }
-    //
-    // //////////////////////////////////////////////////////
-    // // Internal functions
-    // //
-    //
-    // public entry fun create(ctx: &TxContext): BridgeCommittee {
-    //     assert!(tx_context::sender(ctx) == @0x0, ENotSystemAddress);
-    //     BridgeCommittee {
-    //         members: vec_map::empty(),
-    //         member_registrations: vec_map::empty(),
-    //         last_committee_update_epoch: 0,
-    //     }
-    // }
-    //
-    // public entry fun register(
-    //     self: &mut BridgeCommittee,
-    //     system_state: &mut SuiSystemState,
-    //     bridge_pubkey_bytes: vector<u8>,
-    //     http_rest_url: vector<u8>,
-    //     ctx: &TxContext,
-    // ) {
-    //     // We disallow registration after committee initiated in v1
-    //     assert!(self.members.is_empty(), ECommitteeAlreadyInitiated);
-    //     // Ensure pubkey is valid
-    //     assert!(bridge_pubkey_bytes.length() == ECDSA_COMPRESSED_PUBKEY_LENGTH, EInvalidPubkeyLength);
-    //     // sender must be the same sender that created the validator object, this is to prevent DDoS from non-validator actor.
-    //     let sender = ctx.sender();
-    //     let validators = system_state.active_validator_addresses();
-    //
-    //     assert!(validators.contains(&sender), ESenderNotActiveValidator);
-    //     // Sender is active validator, record the registration
-    //
-    //     // In case validator need to update the info
-    //     let registration = if (self.member_registrations.contains(&sender)) {
-    //         let registration = &mut self.member_registrations[&sender];
-    //         registration.http_rest_url = http_rest_url;
-    //         registration.bridge_pubkey_bytes = bridge_pubkey_bytes;
-    //         *registration
-    //     } else {
-    //         let registration = CommitteeMemberRegistration {
-    //             sui_address: sender,
-    //             bridge_pubkey_bytes,
-    //             http_rest_url,
-    //         };
-    //         self.member_registrations.insert(sender, registration);
-    //         registration
-    //     };
-    //
-    //     // check uniqueness of the bridge pubkey.
-    //     // `try_create_next_committee` will abort if bridge_pubkey_bytes are not unique and
-    //     // that will fail the end of epoch transaction (possibly "forever", well, we
-    //     // need to deploy proper validator changes to stop end of epoch from failing).
-    //     check_uniqueness_bridge_keys(self, bridge_pubkey_bytes);
-    //
-    //     emit(registration)
-    // }
-    //
-    // // This method will try to create the next committee using the registration and system state,
-    // // if the total stake fails to meet the minimum required percentage, it will skip the update.
-    // // This is to ensure we don't fail the end of epoch transaction.
-    // public entry fun try_create_next_committee(
-    //     self: &mut BridgeCommittee,
-    //     active_validator_voting_power: VecMap<address, u64>,
-    //     min_stake_participation_percentage: u64,
-    //     ctx: &TxContext,
-    // ) {
-    //     let i = 0;
-    //     let new_members = vec_map::empty();
-    //     let stake_participation_percentage = 0;
-    //
-    //     while (i < self.member_registrations.length()) {
-    //     // retrieve registration
-    //     let (_, registration) = self.member_registrations.get_entry_by_idx(i);
-    //     // Find validator stake amount from system state
-    //
-    //     // Process registration if it's active validator
-    //     let voting_power = active_validator_voting_power.try_get(&registration.sui_address);
-    //     if (voting_power.is_some()) {
-    //     let voting_power = voting_power.destroy_some();
-    //     stake_participation_percentage = stake_participation_percentage + voting_power;
-    //
-    //     let member = CommitteeMember {
-    //     sui_address: registration.sui_address,
-    //     bridge_pubkey_bytes: registration.bridge_pubkey_bytes,
-    //     voting_power: (voting_power as u64),
-    //     http_rest_url: registration.http_rest_url,
-    //     blocklisted: false,
-    //     };
-    //
-    //     new_members.insert(registration.bridge_pubkey_bytes, member)
-    //     };
-    //
-    //     i = i + 1;
-    //     };
-    //
-    //     // Make sure the new committee represent enough stakes, percentage are accurate to 2DP
-    //     if (stake_participation_percentage > = min_stake_participation_percentage) {
-    //     // Clear registrations
-    //     self.member_registrations = vec_map::empty();
-    //     // Store new committee info
-    //     self.members = new_members;
-    //     self.last_committee_update_epoch = ctx.epoch();
-    //
-    //     emit(CommitteeUpdateEvent {
-    //     members: new_members,
-    //     stake_participation_percentage,
-    //     })
-    //     }
-    // }
-    //
-    // // This function applys the blocklist to the committee members, we won't need to run this very often so this is not gas optimised.
-    // // TODO: add tests for this function
-    // public entry fun execute_blocklist(self: &mut BridgeCommittee, blocklist: Blocklist) {
-    //     let blocklisted = blocklist.blocklist_type() != 1;
-    //     let eth_addresses = blocklist.blocklist_validator_addresses();
-    //     let list_len = eth_addresses.length();
-    //     let list_idx = 0;
-    //     let member_idx = 0;
-    //     let pub_keys = vector[];
-    //
-    //     while (list_idx < list_len) {
-    //     let target_address = &eth_addresses[list_idx];
-    //     let found = false;
-    //
-    //     while (member_idx < self.members.length()) {
-    //     let (pub_key, member) = self.members.get_entry_by_idx_mut(member_idx);
-    //     let eth_address = crypto::ecdsa_pub_key_to_eth_address(pub_key);
-    //
-    //     if (*target_address == eth_address) {
-    //     member.blocklisted = blocklisted;
-    //     pub_keys.push_back(*pub_key);
-    //     found = true;
-    //     member_idx = 0;
-    //     break
-    //     };
-    //
-    //     member_idx = member_idx + 1;
-    //     };
-    //
-    //     assert!(found, EValidatorBlocklistContainsUnknownKey);
-    //     list_idx = list_idx + 1;
-    //     };
-    //
-    //     emit(BlocklistValidatorEvent {
-    //     blocklisted,
-    //     public_keys: pub_keys,
-    //     })
-    // }
-    //
-    // public entry fun committee_members(
-    //     self: &BridgeCommittee,
-    // ): &VecMap<vector<u8>, CommitteeMember> {
-    //     &self.members
-    // }
-    //
-    // public entry fun update_node_url(
-    //     self: &mut BridgeCommittee,
-    //     new_url: vector<u8>,
-    //     ctx: &TxContext,
-    // ) {
-    //     let idx = 0;
-    //     while (idx < self.members.length()) {
-    //     let (_, member) = self.members.get_entry_by_idx_mut(idx);
-    //     if (member.sui_address == ctx.sender()) {
-    //     member.http_rest_url = new_url;
-    //     emit(CommitteeMemberUrlUpdateEvent {
-    //     member: member.bridge_pubkey_bytes,
-    //     new_url,
-    //     });
-    //     return
-    //     };
-    //     idx = idx + 1;
-    //     };
-    //     abort ESenderIsNotInBridgeCommittee
-    // }
-    //
-    // // Assert if `bridge_pubkey_bytes` is duplicated in `member_registrations`.
-    // // Dupicate keys would cause `try_create_next_committee` to fail and,
-    // // in consequence, an end of epoch transaction to fail (safe mode run).
-    // // This check will ensure the creation of the committee is correct.
-    // fun check_uniqueness_bridge_keys(self: &BridgeCommittee, bridge_pubkey_bytes: vector<u8>) {
-    //     let count = self.member_registrations.length();
-    //     // bridge_pubkey_bytes must be found once and once only
-    //     let bridge_key_found = false;
-    //     while (count > 0) {
-    //     count = count - 1;
-    //     let (_, registration) = self.member_registrations.get_entry_by_idx(count);
-    //     if (registration.bridge_pubkey_bytes == bridge_pubkey_bytes) {
-    //     assert!(!bridge_key_found, EDuplicatePubkey);
-    //     bridge_key_found = true; // bridge_pubkey_bytes found, we must not have another one
-    //     }
-    //     };
-    // }
-    //
+
+    public fun create(): BridgeCommittee {
+        BridgeCommittee {
+            members: SimpleMap::create<vector<u8>, CommitteeMember>(),
+            member_registrations: SimpleMap::create<address, CommitteeMemberRegistration>(),
+            last_committee_update_epoch: 0,
+        }
+    }
+
+    public fun active_validator_addresses(): vector<address> {
+        // TODO(VR) to confirm validator addresses
+        Vector::empty()
+    }
+
+    public fun register(
+        sender: &signer,
+        self: &mut BridgeCommittee,
+        bridge_pubkey_bytes: vector<u8>,
+        http_rest_url: vector<u8>,
+    ) acquires EventHandlePod {
+        // We disallow registration after committee initiated in v1
+        assert!(SimpleMap::length(&self.members) <= 0, Errors::invalid_state(ECommitteeAlreadyInitiated));
+
+        // Ensure pubkey is valid
+        assert!(
+            Vector::length(&bridge_pubkey_bytes) == ECDSA_COMPRESSED_PUBKEY_LENGTH,
+            Errors::invalid_state(EInvalidPubkeyLength)
+        );
+
+        // sender must be the same sender that created the validator object, this is to prevent DDoS from non-validator actor.
+        // let sender = ctx.sender();
+        let validators = Self::active_validator_addresses();
+
+        let sender_address = Signer::address_of(sender);
+        assert!(Vector::contains(&validators, &sender_address), ESenderNotActiveValidator);
+        // Sender is active validator, record the registration
+
+        // In case validator need to update the info
+        let registration = if (SimpleMap::contains_key(&self.member_registrations, &sender_address)) {
+            let registration = SimpleMap::borrow_mut(&mut self.member_registrations, &sender_address);
+            registration.http_rest_url = http_rest_url;
+            registration.bridge_pubkey_bytes = bridge_pubkey_bytes;
+            *registration
+        } else {
+            let registration = CommitteeMemberRegistration {
+                starcoin_address: sender_address,
+                bridge_pubkey_bytes,
+                http_rest_url,
+            };
+            SimpleMap::add(&mut self.member_registrations, sender_address, registration);
+            registration
+        };
+
+        // check uniqueness of the bridge pubkey.
+        // `try_create_next_committee` will abort if bridge_pubkey_bytes are not unique and
+        // that will fail the end of epoch transaction (possibly "forever", well, we
+        // need to deploy proper validator changes to stop end of epoch from failing).
+        Self::check_uniqueness_bridge_keys(self, bridge_pubkey_bytes);
+
+        let event_handle_pod = borrow_global_mut<EventHandlePod>(@Bridge);
+        Event::emit_event(
+            &mut event_handle_pod.committee_member_registration,
+            registration
+        )
+    }
+
+    // This method will try to create the next committee using the registration and system state,
+    // if the total stake fails to meet the minimum required percentage, it will skip the update.
+    // This is to ensure we don't fail the end of epoch transaction.
+    public fun try_create_next_committee(
+        self: &mut BridgeCommittee,
+        active_validator_voting_power: SimpleMap<address, u64>,
+        min_stake_participation_percentage: u64,
+        epoch: u64,
+    ) acquires EventHandlePod {
+        let i = 0;
+        let new_members = SimpleMap::create<vector<u8>, CommitteeMember>();
+        let stake_participation_percentage = 0;
+
+        let len = SimpleMap::length(&self.member_registrations);
+        while (i < len) {
+            // retrieve registration
+            let (_, registration) = SimpleMap::borrow_index(&self.member_registrations, i);
+            // Find validator stake amount from system state
+
+            // Process registration if it's active validator
+            let voting_power = SimpleMap::borrow(&active_validator_voting_power, &registration.starcoin_address);
+            stake_participation_percentage = stake_participation_percentage + *voting_power;
+
+            let member = CommitteeMember {
+                starcoin_address: registration.starcoin_address,
+                bridge_pubkey_bytes: registration.bridge_pubkey_bytes,
+                voting_power: *voting_power,
+                http_rest_url: registration.http_rest_url,
+                blocklisted: false,
+            };
+
+            SimpleMap::add(&mut new_members, registration.bridge_pubkey_bytes, member);
+            i = i + 1;
+        };
+
+
+        // Make sure the new committee represent enough stakes, percentage are accurate to 2DP
+        if (stake_participation_percentage >= min_stake_participation_percentage) {
+            // Clear registrations
+            self.member_registrations = SimpleMap::create();
+            // Store new committee info
+            self.members = new_members;
+            self.last_committee_update_epoch = epoch;
+
+            let eh = borrow_global_mut<EventHandlePod>(@Bridge);
+            Event::emit_event(&mut eh.committee_update_event, CommitteeUpdateEvent {
+                members: new_members,
+                stake_participation_percentage,
+            })
+        }
+    }
+
+    // This function applys the blocklist to the committee members, we won't need to run this very often so this is not gas optimised.
+    // TODO: add tests for this function
+    public entry fun execute_blocklist(self: &mut BridgeCommittee, blocklist: Blocklist) acquires EventHandlePod {
+        let blocklisted = Message::blocklist_type(&blocklist) != 1;
+        let eth_addresses = Message::blocklist_validator_addresses(&blocklist);
+        let list_len = Vector::length(eth_addresses);
+        let list_idx = 0;
+        let member_idx = 0;
+        let pub_keys = vector[];
+
+        let members_len = SimpleMap::length(&self.members);
+        while (list_idx < list_len) {
+            let target_address = Vector::borrow(eth_addresses, list_idx);
+            let found = false;
+
+
+            while (member_idx < members_len) {
+                let (pub_key, member) = SimpleMap::borrow_index_mut(&mut self.members, member_idx);
+                let eth_address = Crypto::ecdsa_pub_key_to_eth_address(pub_key);
+
+                if (*target_address == eth_address) {
+                    member.blocklisted = blocklisted;
+                    Vector::push_back(&mut pub_keys, *pub_key);
+                    found = true;
+                    member_idx = 0;
+                    break
+                };
+
+                member_idx = member_idx + 1;
+            };
+
+            assert!(found, EValidatorBlocklistContainsUnknownKey);
+            list_idx = list_idx + 1;
+        };
+
+        let eh = borrow_global_mut<EventHandlePod>(@Bridge);
+        Event::emit_event(&mut eh.block_list_validator_event, BlocklistValidatorEvent {
+            blocklisted,
+            public_keys: pub_keys,
+        })
+    }
+
+    public fun committee_members(self: &BridgeCommittee): &SimpleMap<vector<u8>, CommitteeMember> {
+        &self.members
+    }
+
+    public fun update_node_url(
+        sender: &signer,
+        self: &mut BridgeCommittee,
+        new_url: vector<u8>,
+    ) acquires EventHandlePod {
+        let eh = borrow_global_mut<EventHandlePod>(@Bridge);
+        let idx = 0;
+        let member_len = SimpleMap::length(&self.members);
+        let sender = Signer::address_of(sender);
+        while (idx < member_len) {
+            let (_, member) = SimpleMap::borrow_index_mut(&mut self.members, idx);
+            if (member.starcoin_address == sender) {
+                member.http_rest_url = new_url;
+                Event::emit_event(
+                    &mut eh.committee_member_url_update_event,
+                    CommitteeMemberUrlUpdateEvent {
+                        member: member.bridge_pubkey_bytes,
+                        new_url,
+                    });
+                return
+            };
+            idx = idx + 1;
+        };
+        abort ESenderIsNotInBridgeCommittee
+    }
+
+    // Assert if `bridge_pubkey_bytes` is duplicated in `member_registrations`.
+    // Dupicate keys would cause `try_create_next_committee` to fail and,
+    // in consequence, an end of epoch transaction to fail (safe mode run).
+    // This check will ensure the creation of the committee is correct.
+    fun check_uniqueness_bridge_keys(self: &BridgeCommittee, bridge_pubkey_bytes: vector<u8>) {
+        let count = SimpleMap::length(&self.member_registrations);
+        // bridge_pubkey_bytes must be found once and once only
+        let bridge_key_found = false;
+        while (count > 0) {
+            count = count - 1;
+            let (_, registration) = SimpleMap::borrow_index(&self.member_registrations, count);
+            if (registration.bridge_pubkey_bytes == bridge_pubkey_bytes) {
+                assert!(!bridge_key_found, EDuplicatePubkey);
+                bridge_key_found = true; // bridge_pubkey_bytes found, we must not have another one
+            }
+        };
+    }
+
     // //////////////////////////////////////////////////////
     // // Test functions
     // //
