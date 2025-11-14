@@ -2,11 +2,12 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Limitter {
-    use Bridge::Treasury;
-    use StarcoinFramework::Vector;
     use Bridge::ChainIDs::{Self, BridgeRoute};
+    use Bridge::Treasury;
     use Bridge::Treasury::BridgeTreasury;
+    use StarcoinFramework::Event;
     use StarcoinFramework::SimpleMap::{Self, SimpleMap};
+    use StarcoinFramework::Vector;
 
     const ELimitNotFoundForRoute: u64 = 0;
 
@@ -33,15 +34,25 @@ module Bridge::Limitter {
         total_amount: u64,
     }
 
-    struct UpdateRouteLimitEvent has copy, drop {
+    struct UpdateRouteLimitEvent has store, copy, drop {
         sending_chain: u8,
         receiving_chain: u8,
         new_limit: u64,
     }
 
+    struct EventHandlerPod has key {
+        update_router_limit_event_handler: Event::EventHandle<UpdateRouteLimitEvent>
+    }
+
     //////////////////////////////////////////////////////
     // Public functions
     //
+
+    public fun initialize(bridge: &signer) {
+        move_to(bridge, EventHandlerPod {
+            update_router_limit_event_handler: Event::new_event_handle<UpdateRouteLimitEvent>(bridge),
+        })
+    }
 
     // Abort if the route limit is not found
     public fun get_route_limit(self: &TransferLimiter, route: &BridgeRoute): u64 {
@@ -119,26 +130,24 @@ module Bridge::Limitter {
         true
     }
 
-    //
-    // public entry fun update_route_limit(
-    //     self: &mut TransferLimiter,
-    //     route: &BridgeRoute,
-    //     new_usd_limit: u64,
-    // ) {
-    //     let receiving_chain = *route.destination();
-    //
-    //     if (!self.transfer_limits.contains(route)) {
-    //         self.transfer_limits.insert(*route, new_usd_limit);
-    //     } else {
-    //         *&mut self.transfer_limits[route] = new_usd_limit;
-    //     };
-    //
-    //     event::emit(UpdateRouteLimitEvent {
-    //         sending_chain: *route.source(),
-    //         receiving_chain,
-    //         new_limit: new_usd_limit,
-    //     })
-    // }
+
+    public fun update_route_limit(
+        self: &mut TransferLimiter,
+        route: &BridgeRoute,
+        new_usd_limit: u64,
+    ) acquires EventHandlerPod {
+        let receiving_chain = *ChainIDs::route_destination(route);
+
+        SimpleMap::upsert(&mut self.transfer_limits, *route, new_usd_limit);
+
+        let eh = borrow_global_mut<EventHandlerPod>(@Bridge);
+        Event::emit_event(&mut eh.update_router_limit_event_handler, UpdateRouteLimitEvent {
+            sending_chain: *ChainIDs::route_source(route),
+            receiving_chain,
+            new_limit: new_usd_limit,
+        })
+    }
+
     //
     // // Current hour since unix epoch
     fun current_hour_since_epoch(clock_timestamp_ms: u64): u64 {
