@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::ChainIDs {
-
     use StarcoinFramework::Errors;
     use StarcoinFramework::Vector;
     use StarcoinFramework::ChainId;

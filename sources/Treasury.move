@@ -93,18 +93,19 @@ module Bridge::Treasury {
 
     public fun initialize(bridge_admin: &signer) {
         assert!(Signer::address_of(bridge_admin) == @Bridge, EInvalidSigner);
-        move_to(bridge_admin, BridgeTreasury {
-            // treasuries: object_bag::new(ctx),
-            supported_tokens: SimpleMap::create<vector<u8>, BridgeTokenMetadata>(),
-            id_token_type_map: SimpleMap::create<u8, vector<u8>>(),
-            waiting_room: SimpleMap::create<vector<u8>, ForeignTokenRegistration>(),
-        });
-
         move_to(bridge_admin, EventHandler {
             update_token_price_event_handler: Event::new_event_handle<UpdateTokenPriceEvent>(bridge_admin),
             new_token_event_handler: Event::new_event_handle<NewTokenEvent>(bridge_admin),
             token_registration_event_handler: Event::new_event_handle<TokenRegistrationEvent>(bridge_admin),
-        })
+        });
+    }
+
+    public fun create(): BridgeTreasury {
+        BridgeTreasury {
+            supported_tokens: SimpleMap::create<vector<u8>, BridgeTokenMetadata>(),
+            id_token_type_map: SimpleMap::create<u8, vector<u8>>(),
+            waiting_room: SimpleMap::create<vector<u8>, ForeignTokenRegistration>(),
+        }
     }
 
     //////////////////////////////////////////////////////

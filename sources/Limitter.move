@@ -40,7 +40,7 @@ module Bridge::Limitter {
         new_limit: u64,
     }
 
-    struct EventHandlerPod has key {
+    struct EventHandlePod has key {
         update_router_limit_event_handler: Event::EventHandle<UpdateRouteLimitEvent>
     }
 
@@ -49,7 +49,7 @@ module Bridge::Limitter {
     //
 
     public fun initialize(bridge: &signer) {
-        move_to(bridge, EventHandlerPod {
+        move_to(bridge, EventHandlePod {
             update_router_limit_event_handler: Event::new_event_handle<UpdateRouteLimitEvent>(bridge),
         })
     }
@@ -135,12 +135,12 @@ module Bridge::Limitter {
         self: &mut TransferLimiter,
         route: &BridgeRoute,
         new_usd_limit: u64,
-    ) acquires EventHandlerPod {
+    ) acquires EventHandlePod {
         let receiving_chain = *ChainIDs::route_destination(route);
 
         SimpleMap::upsert(&mut self.transfer_limits, *route, new_usd_limit);
 
-        let eh = borrow_global_mut<EventHandlerPod>(@Bridge);
+        let eh = borrow_global_mut<EventHandlePod>(@Bridge);
         Event::emit_event(&mut eh.update_router_limit_event_handler, UpdateRouteLimitEvent {
             sending_chain: *ChainIDs::route_source(route),
             receiving_chain,

@@ -1,3 +1,6 @@
+// Copyright (c) Starcoin Contributors
+// SPDX-License-Identifier: Apache-2.0
+
 module Bridge::BCSUtils {
     use StarcoinFramework::BitOperators;
     use StarcoinFramework::Errors;
