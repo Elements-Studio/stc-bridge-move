@@ -2,25 +2,33 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Bridge {
-    use StarcoinFramework::Option;
-    use StarcoinFramework::Event;
-    use StarcoinFramework::BCS;
-    use Bridge::Message;
-    use Bridge::MessageTypes;
-    use StarcoinFramework::Vector;
     use Bridge::ChainIDs;
-    use StarcoinFramework::Token;
-    use Bridge::Limitter;
     use Bridge::Committee::{Self, BridgeCommittee};
-    use Bridge::Limitter::TransferLimiter;
-    use Bridge::Message::{BridgeMessage, BridgeMessageKey};
-    use Bridge::Treasury;
-    use Bridge::Treasury::BridgeTreasury;
-
+    use Bridge::Limitter::{Self, TransferLimiter};
+    use Bridge::Message::{
+        Self,
+        AddTokenOnStarcoin,
+        BridgeMessage,
+        BridgeMessageKey,
+        EmergencyOp,
+        ParsedTokenTransferMessage,
+        UpdateAssetPrice,
+        UpdateBridgeLimit
+    };
+    use Bridge::MessageTypes;
+    use Bridge::Treasury::{Self, BridgeTreasury};
+    use StarcoinFramework::Account;
+    use StarcoinFramework::BCS;
+    use StarcoinFramework::Errors;
+    use StarcoinFramework::Event;
+    use StarcoinFramework::Option;
     use StarcoinFramework::Option::Option;
     use StarcoinFramework::Signer;
     use StarcoinFramework::SimpleMap;
     use StarcoinFramework::SimpleMap::SimpleMap;
+    use StarcoinFramework::Token;
+    use StarcoinFramework::Token::Token;
+    use StarcoinFramework::Vector;
 
     const MESSAGE_VERSION: u8 = 1;
 
@@ -220,7 +228,6 @@ module Bridge::Bridge {
         Treasury::register_foreign_token(sender, &mut load_inner_mut(bridge).treasury, mint_cap, burn_cap);
     }
 
-
     // Create bridge request to send token to other chain, the request will be in
     // pending state until approved
     public fun send_token<T: store>(
@@ -349,84 +356,85 @@ module Bridge::Bridge {
         Event::emit_event(&mut eh.token_transfer_approved, TokenTransferApproved { message_key });
     }
 
-    //
-    // // This function can only be called by the token recipient
-    // // Abort if the token has already been claimed or hits limiter currently,
-    // // in which case, no event will be emitted and only abort code will be returned.
-    // public fun claim_token<T>(
-    //     bridge: &mut Bridge,
-    //     clock: &Clock,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    //     ctx: &mut TxContext,
-    // ): Coin<T> {
-    //     let (maybe_token, owner) = bridge.claim_token_internal < T > (
-    //         clock,
-    //         source_chain,
-    //         bridge_seq_num,
-    //         ctx,
-    //     );
-    //     // Only token owner can claim the token
-    //     assert!(ctx.sender() == owner, EUnauthorisedClaim);
-    //     assert!(maybe_token.is_some(), ETokenAlreadyClaimedOrHitLimit);
-    //     maybe_token.destroy_some()
-    // }
-    //
-    // // This function can be called by anyone to claim and transfer the token to the recipient
-    // // If the token has already been claimed or hits limiter currently, it will return instead of aborting.
-    // public fun claim_and_transfer_token<T>(
-    //     bridge: &mut Bridge,
-    //     clock: &Clock,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    //     ctx: &mut TxContext,
-    // ) {
-    //     let (token, owner) = bridge.claim_token_internal < T > (clock, source_chain, bridge_seq_num, ctx);
-    //     if (token.is_some()) {
-    //         transfer::public_transfer(token.destroy_some(), owner)
-    //     } else {
-    //         token.destroy_none();
-    //     };
-    // }
-    //
-    // public fun execute_system_message(
-    //     bridge: &mut Bridge,
-    //     message: BridgeMessage,
-    //     signatures: vector<vector<u8>>,
-    // ) {
-    //     let message_type = message.message_type();
-    //
-    //     // TODO: test version mismatch
-    //     assert!(message.message_version() == MESSAGE_VERSION, EUnexpectedMessageVersion);
-    //     let inner = load_inner_mut(bridge);
-    //
-    //     assert!(message.source_chain() == inner.chain_id, EUnexpectedChainID);
-    //
-    //     // check system ops seq number and increment it
-    //     let expected_seq_num = inner.get_current_seq_num_and_increment(message_type);
-    //     assert!(message.seq_num() == expected_seq_num, EUnexpectedSeqNum);
-    //
-    //     inner.committee.verify_signatures(message, signatures);
-    //
-    //     if (message_type == message_types::emergency_op()) {
-    //         let payload = message.extract_emergency_op_payload();
-    //         inner.execute_emergency_op(payload);
-    //     } else if (message_type == message_types::committee_blocklist()) {
-    //         let payload = message.extract_blocklist_payload();
-    //         inner.committee.execute_blocklist(payload);
-    //     } else if (message_type == message_types::update_bridge_limit()) {
-    //         let payload = message.extract_update_bridge_limit();
-    //         inner.execute_update_bridge_limit(payload);
-    //     } else if (message_type == message_types::update_asset_price()) {
-    //         let payload = message.extract_update_asset_price();
-    //         inner.execute_update_asset_price(payload);
-    //     } else if (message_type == message_types::add_tokens_on_starcoin()) {
-    //         let payload = message.extract_add_tokens_on_sui();
-    //         inner.execute_add_tokens_on_sui(payload);
-    //     } else {
-    //         abort EUnexpectedMessageType
-    //     };
-    // }
+
+    // This function can only be called by the token recipient
+    // Abort if the token has already been claimed or hits limiter currently,
+    // in which case, no event will be emitted and only abort code will be returned.
+    public fun claim_token<T: store>(
+        sender: &signer,
+        bridge: &mut Bridge,
+        clock_timestamp_ms: u64,
+        _epoch: u64,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ): Token::Token<T> acquires EventHandlePod {
+        let (maybe_token, owner) = Self::claim_token_internal<T>(
+            bridge,
+            clock_timestamp_ms,
+            source_chain,
+            bridge_seq_num,
+        );
+        // Only token owner can claim the token
+        assert!(Signer::address_of(sender) == owner, EUnauthorisedClaim);
+        assert!(Option::is_some(&maybe_token), ETokenAlreadyClaimedOrHitLimit);
+        Option::destroy_some(maybe_token)
+    }
+
+    // This function can be called by anyone to claim and transfer the token to the recipient
+    // If the token has already been claimed or hits limiter currently, it will return instead of aborting.
+    public fun claim_and_transfer_token<T: store>(
+        bridge: &mut Bridge,
+        clock_timestamp_ms: u64,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ) acquires EventHandlePod {
+        let (token, owner) = Self::claim_token_internal<T>(bridge, clock_timestamp_ms, source_chain, bridge_seq_num);
+        if (Option::is_some(&token)) {
+            Account::deposit(owner, Option::destroy_some(token));
+        } else {
+            Option::destroy_none(token)
+        }
+    }
+
+    public fun execute_system_message(
+        bridge: &mut Bridge,
+        message: BridgeMessage,
+        signatures: vector<vector<u8>>,
+    ) acquires EventHandlePod {
+        let message_type = Message::message_type(&message);
+
+        // TODO: test version mismatch
+        assert!(Message::message_version(&message) == MESSAGE_VERSION, EUnexpectedMessageVersion);
+        let inner = load_inner_mut(bridge);
+
+        assert!(Message::source_chain(&message) == inner.chain_id, EUnexpectedChainID);
+
+        // check system ops seq number and increment it
+        let expected_seq_num = Self::get_current_seq_num_and_increment(inner, message_type);
+        assert!(Message::seq_num(&message) == expected_seq_num, EUnexpectedSeqNum);
+
+        Committee::verify_signatures(&inner.committee, message, signatures);
+
+        if (message_type == MessageTypes::emergency_op()) {
+            let payload = Message::extract_emergency_op_payload(&message);
+            Self::execute_emergency_op(inner, payload);
+        } else if (message_type == MessageTypes::committee_blocklist()) {
+            let payload = Message::extract_blocklist_payload(&message);
+            Committee::execute_blocklist(&mut inner.committee, payload);
+        } else if (message_type == MessageTypes::update_bridge_limit()) {
+            let payload = Message::extract_update_bridge_limit(&message);
+            Self::execute_update_bridge_limit(inner, payload);
+        } else if (message_type == MessageTypes::update_asset_price()) {
+            let payload = Message::extract_update_asset_price(&message);
+            Self::execute_update_asset_price(inner, payload);
+        } else if (message_type == MessageTypes::add_tokens_on_starcoin()) {
+            let payload = Message::extract_add_tokens_on_starcoin(&message);
+            Self::execute_add_tokens_on_starcoin(inner, payload);
+        } else {
+            abort EUnexpectedMessageType
+        };
+    }
+
     //
     // //////////////////////////////////////////////////////
     // // DevInspect Functions for Read
@@ -437,7 +445,7 @@ module Bridge::Bridge {
     //     let inner = load_inner(bridge);
     //     let key = message::create_key(
     //         source_chain,
-    //         message_types::token(),
+    //         MessageTypes::token(),
     //         bridge_seq_num,
     //     );
     //
@@ -466,7 +474,7 @@ module Bridge::Bridge {
     //     let inner = load_inner(bridge);
     //     let key = message::create_key(
     //         source_chain,
-    //         message_types::token(),
+    //         MessageTypes::token(),
     //         bridge_seq_num,
     //     );
     //
@@ -480,18 +488,11 @@ module Bridge::Bridge {
     //
     // //////////////////////////////////////////////////////
     // // Internal functions
-    // //
-    //
-    // fun load_inner(bridge: &Bridge): &BridgeInner {
-    //     let version = bridge.inner.version();
-    //
-    //     // TODO: Replace this with a lazy update function when we add a new version of the inner object.
-    //     assert!(version == CURRENT_VERSION, EWrongInnerVersion);
-    //     let inner: &BridgeInner = bridge.inner.load_value();
-    //     assert!(inner.bridge_version == version, EWrongInnerVersion);
-    //     inner
-    // }
-    //
+
+    fun load_inner(bridge: &Bridge): &BridgeInner {
+        &bridge.inner
+    }
+
     fun load_inner_mut(bridge: &mut Bridge): &mut BridgeInner {
         // let version = bridge.inner.bridge_version;
         // // TODO: Replace this with a lazy update function when we add a new version of the inner object.
@@ -501,139 +502,149 @@ module Bridge::Bridge {
         &mut bridge.inner
     }
 
-    //
-    // // Claim token from approved bridge message
-    // // Returns Some(Coin) if coin can be claimed. If already claimed, return None
-    // fun claim_token_internal<T>(
-    //     bridge: &mut Bridge,
-    //     clock: &Clock,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    //     ctx: &mut TxContext,
-    // ): (Option<Coin<T>>, address) {
-    //     let inner = load_inner_mut(bridge);
-    //     assert!(!inner.paused, EBridgeUnavailable);
-    //
-    //     let key = message::create_key(source_chain, message_types::token(), bridge_seq_num);
-    //     assert!(inner.token_transfer_records.contains(key), EMessageNotFoundInRecords);
-    //
-    //     // retrieve approved bridge message
-    //     let record = &mut inner.token_transfer_records[key];
-    //     // ensure this is a token bridge message
-    //     assert!(&record.message.message_type() == message_types::token(), EUnexpectedMessageType);
-    //     // Ensure it's signed
-    //     assert!(record.verified_signatures.is_some(), EUnauthorisedClaim);
-    //
-    //     // extract token message
-    //     let token_payload = record.message.extract_token_bridge_payload();
-    //     // get owner address
-    //     let owner = address::from_bytes(token_payload.token_target_address());
-    //
-    //     // If already claimed, exit early
-    //     if (record.claimed) {
-    //         event::emit(TokenTransferAlreadyClaimed { message_key: key });
-    //         return (Option::none(), owner)
-    //     };
-    //
-    //     let target_chain = token_payload.token_target_chain();
-    //     // ensure target chain matches bridge.chain_id
-    //     assert!(target_chain == inner.chain_id, EUnexpectedChainID);
-    //
-    //     // TODO: why do we check validity of the route here? what if inconsistency?
-    //     // Ensure route is valid
-    //     // TODO: add unit tests
-    //     // `get_route` abort if route is invalid
-    //     let route = chain_ids::get_route(source_chain, target_chain);
-    //     // check token type
-    //     assert!(
-    //         treasury::token_id<T>(&inner.treasury) == token_payload.token_type(),
-    //         EUnexpectedTokenType,
-    //     );
-    //
-    //     let amount = token_payload.token_amount();
-    //     // Make sure transfer is within limit.
-    //     if (
-    //         !inner
-    //             .limiter
-    //             .check_and_record_sending_transfer < T > (
-    //             &inner.treasury,
-    //             clock,
-    //             route,
-    //             amount,
-    //         )
-    //     ) {
-    //         event::emit(TokenTransferLimitExceed { message_key: key });
-    //         return (Option::none(), owner)
-    //     };
-    //
-    //     // claim from treasury
-    //     let token = inner.treasury.mint < T > (amount, ctx);
-    //
-    //     // Record changes
-    //     record.claimed = true;
-    //     event::emit(TokenTransferClaimed { message_key: key });
-    //
-    //     (Option::some(token), owner)
-    // }
-    //
-    // fun execute_emergency_op(inner: &mut BridgeInner, payload: EmergencyOp) {
-    //     let op = payload.emergency_op_type();
-    //     if (op == message::emergency_op_pause()) {
-    //         assert!(!inner.paused, EBridgeAlreadyPaused);
-    //         inner.paused = true;
-    //         event::emit(EmergencyOpEvent { frozen: true });
-    //     } else if (op == message::emergency_op_unpause()) {
-    //         assert!(inner.paused, EBridgeNotPaused);
-    //         inner.paused = false;
-    //         event::emit(EmergencyOpEvent { frozen: false });
-    //     } else {
-    //         abort EUnexpectedOperation
-    //     };
-    // }
-    //
-    // fun execute_update_bridge_limit(inner: &mut BridgeInner, payload: UpdateBridgeLimit) {
-    //     let receiving_chain = payload.update_bridge_limit_payload_receiving_chain();
-    //     assert!(receiving_chain == inner.chain_id, EUnexpectedChainID);
-    //     let route = chain_ids::get_route(
-    //         payload.update_bridge_limit_payload_sending_chain(),
-    //         receiving_chain,
-    //     );
-    //
-    //     inner
-    //         .limiter
-    //         .update_route_limit(
-    //             &route,
-    //             payload.update_bridge_limit_payload_limit(),
-    //         )
-    // }
-    //
-    // fun execute_update_asset_price(inner: &mut BridgeInner, payload: UpdateAssetPrice) {
-    //     inner
-    //         .treasury
-    //         .update_asset_notional_price(
-    //             payload.update_asset_price_payload_token_id(),
-    //             payload.update_asset_price_payload_new_price(),
-    //         )
-    // }
-    //
-    // fun execute_add_tokens_on_sui(inner: &mut BridgeInner, payload: AddTokenOnStarcoin) {
-    //     // FIXME: assert native_token to be false and add test
-    //     let native_token = payload.is_native();
-    //     let token_ids = payload.token_ids();
-    //     let token_type_names = payload.token_type_names();
-    //     let token_prices = payload.token_prices();
-    //
-    //     // Make sure token data is consistent
-    //     assert!(token_ids.length() == token_type_names.length(), EMalformedMessageError);
-    //     assert!(token_ids.length() == token_prices.length(), EMalformedMessageError);
-    //
-    //     while (token_ids.length() > 0) {
-    //     let token_id = token_ids.pop_back();
-    //     let token_type_name = token_type_names.pop_back();
-    //     let token_price = token_prices.pop_back();
-    //     inner.treasury.add_new_token(token_type_name, token_id, native_token, token_price)
-    //     }
-    // }
+    // Claim token from approved bridge message
+    // Returns Some(Coin) if coin can be claimed. If already claimed, return None
+    fun claim_token_internal<T: store>(
+        bridge: &mut Bridge,
+        clock_timestamp_ms: u64,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ): (Option<Token<T>>, address) acquires EventHandlePod {
+        let eh = borrow_global_mut<EventHandlePod>(@Bridge);
+
+        let inner = load_inner_mut(bridge);
+        assert!(!inner.paused, EBridgeUnavailable);
+
+        let key = Message::create_key(source_chain, MessageTypes::token(), bridge_seq_num);
+        assert!(SimpleMap::contains_key(&inner.token_transfer_records, &key), EMessageNotFoundInRecords);
+
+        // retrieve approved bridge message
+        let record = SimpleMap::borrow_mut(&mut inner.token_transfer_records, &key);
+        // ensure this is a token bridge message
+        assert!(Message::message_type(&record.message) == MessageTypes::token(), EUnexpectedMessageType);
+        // Ensure it's signed
+        assert!(Option::is_some(&record.verified_signatures), EUnauthorisedClaim);
+
+        // extract token message
+        let token_payload = Message::extract_token_bridge_payload(&record.message);
+        // get owner address
+        let owner = BCS::to_address(Message::token_target_address(&token_payload));
+
+        // If already claimed, exit early
+        if (record.claimed) {
+            Event::emit_event(
+                &mut eh.token_transfer_already_claimed,
+                TokenTransferAlreadyClaimed { message_key: key }
+            );
+            return (Option::none(), owner)
+        };
+
+        let target_chain = Message::token_target_chain(&token_payload);
+        // ensure target chain matches bridge.chain_id
+        assert!(target_chain == inner.chain_id, EUnexpectedChainID);
+
+        // TODO: why do we check validity of the route here? what if inconsistency?
+        // Ensure route is valid
+        // TODO: add unit tests
+        // `get_route` abort if route is invalid
+        let route = ChainIDs::get_route(source_chain, target_chain);
+        // check token type
+        assert!(
+            Treasury::token_id<T>(&inner.treasury) == Message::token_type(&token_payload),
+            EUnexpectedTokenType,
+        );
+
+        let amount = Message::token_amount(&token_payload);
+
+        // Make sure transfer is within limit.
+        let exceed = Limitter::check_and_record_sending_transfer<T>(
+            &mut inner.limiter,
+            &inner.treasury,
+            clock_timestamp_ms,
+            route,
+            amount,
+        );
+
+        if (exceed) {
+            Event::emit_event(&mut eh.token_transfer_limit_exceed, TokenTransferLimitExceed { message_key: key });
+            return (Option::none(), owner)
+        };
+
+        // claim from treasury
+        let token = Treasury::mint<T>(amount);
+
+        // Record changes
+        record.claimed = true;
+        Event::emit_event(&mut eh.token_transfer_claimed, TokenTransferClaimed { message_key: key });
+
+        (Option::some(token), owner)
+    }
+
+
+    fun execute_emergency_op(inner: &mut BridgeInner, payload: EmergencyOp) acquires EventHandlePod {
+        let ehp = borrow_global_mut<EventHandlePod>(@Bridge);
+        let op = Message::emergency_op_type(&payload);
+        if (op == Message::emergency_op_pause()) {
+            assert!(!inner.paused, EBridgeAlreadyPaused);
+            inner.paused = true;
+            Event::emit_event(&mut ehp.emergency_op_event, EmergencyOpEvent { frozen: true });
+        } else if (op == Message::emergency_op_unpause()) {
+            assert!(inner.paused, EBridgeNotPaused);
+            inner.paused = false;
+            Event::emit_event(&mut ehp.emergency_op_event, EmergencyOpEvent { frozen: false });
+        } else {
+            abort EUnexpectedOperation
+        };
+    }
+
+    fun execute_update_bridge_limit(inner: &mut BridgeInner, payload: UpdateBridgeLimit) {
+        let receiving_chain = Message::update_bridge_limit_payload_receiving_chain(&payload);
+        assert!(receiving_chain == inner.chain_id, EUnexpectedChainID);
+        let route = ChainIDs::get_route(
+            Message::update_bridge_limit_payload_sending_chain(&payload),
+            receiving_chain,
+        );
+
+        Limitter::update_route_limit(
+            &mut inner.limiter,
+            &route,
+            Message::update_bridge_limit_payload_limit(&payload),
+        );
+    }
+
+    fun execute_update_asset_price(inner: &mut BridgeInner, payload: UpdateAssetPrice) {
+        Treasury::update_asset_notional_price(
+            &mut inner.treasury,
+            Message::update_asset_price_payload_token_id(&payload),
+            Message::update_asset_price_payload_new_price(&payload),
+        );
+    }
+
+    fun execute_add_tokens_on_starcoin(inner: &mut BridgeInner, payload: AddTokenOnStarcoin) {
+        // FIXME: assert native_token to be false and add test
+        let _native_token = Message::is_native(&payload);
+        let token_ids = Message::token_ids(&payload);
+        let token_type_names = Message::token_type_names(&payload);
+        let token_prices = Message::token_prices(&payload);
+
+        // Make sure token data is consistent
+        assert!(
+            Vector::length(&token_ids) == Vector::length(&token_type_names),
+            Errors::invalid_state(EMalformedMessageError)
+        );
+        assert!(
+            Vector::length(&token_ids) == Vector::length(&token_prices),
+            Errors::invalid_state(EMalformedMessageError)
+        );
+
+        while (Vector::length(&token_ids) > 0) {
+            let token_id = Vector::pop_back(&mut token_ids);
+            let token_type_name = Vector::pop_back(&mut token_type_names);
+            let token_price = Vector::pop_back(&mut token_prices);
+            Treasury::add_new_token(&mut inner.treasury, token_type_name, token_id, token_price);
+        }
+    }
+
     //
     // Verify seq number matches the next expected seq number for the message type,
     // and increment it.
@@ -648,28 +659,28 @@ module Bridge::Bridge {
         *entry = seq_num + 1;
         seq_num
     }
-    //
-    // #[allow(unused_function)]
-    // fun get_parsed_token_transfer_message(
-    //     bridge: &Bridge,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    // ): Option<ParsedTokenTransferMessage> {
-    //     let inner = load_inner(bridge);
-    //     let key = message::create_key(
-    //         source_chain,
-    //         message_types::token(),
-    //         bridge_seq_num,
-    //     );
-    //
-    //     if (!inner.token_transfer_records.contains(key)) {
-    //         return Option::none()
-    //     };
-    //
-    //     let record = &inner.token_transfer_records[key];
-    //     let message = &record.message;
-    //     Option::some(to_parsed_token_transfer_message(message))
-    // }
+
+    #[allow(unused_function)]
+    fun get_parsed_token_transfer_message(
+        bridge: &Bridge,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ): Option<ParsedTokenTransferMessage> {
+        let inner = Self::load_inner(bridge);
+        let key = Message::create_key(
+            source_chain,
+            MessageTypes::token(),
+            bridge_seq_num,
+        );
+
+        if (!SimpleMap::contains_key(&inner.token_transfer_records, &key)) {
+            return Option::none()
+        };
+
+        let record = SimpleMap::borrow(&inner.token_transfer_records, &key);
+        let message = &record.message;
+        Option::some(Message::to_parsed_token_transfer_message(message))
+    }
     //
     // //////////////////////////////////////////////////////
     // // Test functions
