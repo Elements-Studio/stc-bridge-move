@@ -107,7 +107,7 @@ module Bridge::Message {
         let amount = Self::peel_u64_be(&mut bcs);
 
         ChainIDs::assert_valid_chain_id(target_chain);
-        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(&bcs)), ETrailingBytes);
+        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(bcs)), ETrailingBytes);
 
         TokenTransferPayload {
             sender_address,
@@ -145,7 +145,7 @@ module Bridge::Message {
             address_count = address_count - 1;
         };
 
-        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(&bcs)), ETrailingBytes);
+        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(bcs)), ETrailingBytes);
 
         Blocklist {
             blocklist_type,
@@ -159,7 +159,7 @@ module Bridge::Message {
         let limit = peel_u64_be(&mut bcs);
 
         ChainIDs::assert_valid_chain_id(sending_chain);
-        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(&bcs)), ETrailingBytes);
+        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(bcs)), ETrailingBytes);
 
         UpdateBridgeLimit {
             receiving_chain: message.source_chain,
@@ -173,7 +173,7 @@ module Bridge::Message {
         let token_id = BCSUtils::peel_u8(&mut bcs);
         let new_price = peel_u64_be(&mut bcs);
 
-        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(&bcs)), ETrailingBytes);
+        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(bcs)), ETrailingBytes);
 
         UpdateAssetPrice {
             token_id,
@@ -194,7 +194,7 @@ module Bridge::Message {
             Vector::push_back(&mut token_type_names, *Vector::borrow(&token_type_names_bytes, n));
             n = n + 1;
         };
-        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(&bcs)), ETrailingBytes);
+        assert!(Vector::is_empty(&BCSUtils::into_remainder_bytes(bcs)), ETrailingBytes);
         AddTokenOnStarcoin {
             native_token,
             token_ids,
@@ -627,7 +627,7 @@ module Bridge::Message {
         let message_version = BCSUtils::peel_u8(&mut bcs);
         let seq_num = peel_u64_be_for_testing(&mut bcs);
         let source_chain = BCSUtils::peel_u8(&mut bcs);
-        let payload = BCSUtils::into_remainder_bytes(&bcs);
+        let payload = BCSUtils::into_remainder_bytes(bcs);
         make_generic_message(
             message_type,
             message_version,

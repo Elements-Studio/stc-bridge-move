@@ -10,5 +10,4 @@ module Bridge::EcdsaK1 {
         // TODO:(VR): to implements this function
         Vector::empty<u8>()
     }
-
 }
