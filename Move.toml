@@ -7,4 +7,4 @@ StarcoinFramework = "0x1"
 Bridge = "0x246b237c16c761e9478783dd83f7004a"
 
 [dependencies]
-StarcoinFramework = { git = "https://github.com/starcoinorg/starcoin-framework.git", rev = "70611aa73cc2eab8ffc2dfbd6fd04e64d17e5223" }
+StarcoinFramework = { git = "https://github.com/starcoinorg/starcoin-framework.git", rev = "2fdb0b45e58068b26c0ee291a4aa6df7e9811f56" }

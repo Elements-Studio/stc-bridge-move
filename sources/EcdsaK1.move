@@ -6,7 +6,7 @@ module Bridge::EcdsaK1 {
     const ERecoverFailed: u64 = 1;
 
     public fun decompress_pubkey(pubkey: &vector<u8>): vector<u8> {
-        Secp256k1::decompress_pubkey(pubkey)
+        Secp256k1::decompress_pubkey(*pubkey)
     }
 
     public fun secp256k1_ecrecover(signature: &vector<u8>, message: &vector<u8>, hash: u8): vector<u8> {
