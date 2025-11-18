@@ -137,8 +137,8 @@ module Bridge::ChainIDs {
         let size = Vector::length(&valid_routes);
         while (size > 0) {
             size = size - 1;
-            let route = valid_routes[size];
-            assert!(is_valid_route(route.source, route.destination)); // sould not assert
+            let route = Vector::borrow(&valid_routes, size);
+            assert!(is_valid_route(route.source, route.destination), 1); // sould not assert
         }
     }
 

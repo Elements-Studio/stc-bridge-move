@@ -215,94 +215,81 @@ module Bridge::Treasury {
         })
     }
 
-
     fun get_token_metadata<T: store>(self: &BridgeTreasury): BridgeTokenMetadata {
         let coin_type = Token::canonicalize(&Token::token_code<T>());
         *SimpleMap::borrow(&self.supported_tokens, &coin_type)
     }
+
+    //////////////////////////////////////////////////////
+    // Test functions
     //
-    // //////////////////////////////////////////////////////
-    // // Test functions
-    // //
-    //
+
+    #[test_only]
+    public fun mock_for_test(): BridgeTreasury {
+        let treasury = Self::create();
+        Self::setup_for_testing(&mut treasury);
+        treasury
+    }
+
+    #[test_only]
+    public fun setup_for_testing(treasury: &mut BridgeTreasury) {
+        use Bridge::BTC::BTC;
+        use Bridge::ETH::ETH;
+        use Bridge::USDC::USDC;
+        use Bridge::USDT::USDT;
+
+        SimpleMap::add(&mut treasury.supported_tokens,
+            BCS::to_bytes(&Token::token_code<BTC>()),
+            BridgeTokenMetadata {
+                id: 1,
+                decimal_multiplier: 100_000_000,
+                notional_value: 50_000 * USD_VALUE_MULTIPLIER,
+                native_token: false,
+            },
+        );
+
+        SimpleMap::add(&mut treasury.supported_tokens,
+            BCS::to_bytes(&Token::token_code<ETH>()),
+            BridgeTokenMetadata {
+                id: 2,
+                decimal_multiplier: 100_000_000,
+                notional_value: 3_000 * USD_VALUE_MULTIPLIER,
+                native_token: false,
+            },
+        );
+
+        SimpleMap::add(&mut treasury.supported_tokens,
+            BCS::to_bytes(&Token::token_code<USDC>()),
+            BridgeTokenMetadata {
+                id: 3,
+                decimal_multiplier: 1_000_000,
+                notional_value: USD_VALUE_MULTIPLIER,
+                native_token: false,
+            },
+        );
+
+        SimpleMap::add(&mut treasury.supported_tokens,
+            BCS::to_bytes(&Token::token_code<USDT>()),
+            BridgeTokenMetadata {
+                id: 4,
+                decimal_multiplier: 1_000_000,
+                notional_value: USD_VALUE_MULTIPLIER,
+                native_token: false,
+            },
+        );
+
+        SimpleMap::add(&mut treasury.id_token_type_map, 1, BCS::to_bytes(&Token::token_code<BTC>()));
+        SimpleMap::add(&mut treasury.id_token_type_map, 2, BCS::to_bytes(&Token::token_code<ETH>()));
+        SimpleMap::add(&mut treasury.id_token_type_map, 3, BCS::to_bytes(&Token::token_code<USDC>()));
+        SimpleMap::add(&mut treasury.id_token_type_map, 4, BCS::to_bytes(&Token::token_code<USDT>()));
+    }
+
+
     // #[test_only]
-    // struct ETH has drop {}
-    //
-    // #[test_only]
-    // struct BTC has drop {}
-    //
-    // #[test_only]
-    // struct USDT has drop {}
-    //
-    // #[test_only]
-    // struct USDC has drop {}
-    //
-    //
-    // #[test_only]
-    // public fun mock_for_test(ctx: &mut TxContext): BridgeTreasury {
-    //     let treasury = new_for_testing(ctx);
-    //     treasury.setup_for_testing();
-    //     treasury
-    // }
-    //
-    // #[test_only]
-    // public fun setup_for_testing(treasury: &mut BridgeTreasury) {
-    //     treasury
-    //         .supported_tokens
-    //         .insert(
-    //             type_name::with_defining_ids<BTC>(),
-    //             BridgeTokenMetadata {
-    //                 id: 1,
-    //                 decimal_multiplier: 100_000_000,
-    //                 notional_value: 50_000 * USD_VALUE_MULTIPLIER,
-    //                 native_token: false,
-    //             },
-    //         );
-    //     treasury
-    //         .supported_tokens
-    //         .insert(
-    //             type_name::with_defining_ids<ETH>(),
-    //             BridgeTokenMetadata {
-    //                 id: 2,
-    //                 decimal_multiplier: 100_000_000,
-    //                 notional_value: 3_000 * USD_VALUE_MULTIPLIER,
-    //                 native_token: false,
-    //             },
-    //         );
-    //     treasury
-    //         .supported_tokens
-    //         .insert(
-    //             type_name::with_defining_ids<USDC>(),
-    //             BridgeTokenMetadata {
-    //                 id: 3,
-    //                 decimal_multiplier: 1_000_000,
-    //                 notional_value: USD_VALUE_MULTIPLIER,
-    //                 native_token: false,
-    //             },
-    //         );
-    //     treasury
-    //         .supported_tokens
-    //         .insert(
-    //             type_name::with_defining_ids<USDT>(),
-    //             BridgeTokenMetadata {
-    //                 id: 4,
-    //                 decimal_multiplier: 1_000_000,
-    //                 notional_value: USD_VALUE_MULTIPLIER,
-    //                 native_token: false,
-    //             },
-    //         );
-    //
-    //     treasury.id_token_type_map.insert(1, type_name::with_defining_ids<BTC>());
-    //     treasury.id_token_type_map.insert(2, type_name::with_defining_ids<ETH>());
-    //     treasury.id_token_type_map.insert(3, type_name::with_defining_ids<USDC>());
-    //     treasury.id_token_type_map.insert(4, type_name::with_defining_ids<USDT>());
-    // }
-    //
-    // #[test_only]
-    // public fun waiting_room(treasury: &BridgeTreasury): &Bag {
+    // public fun waiting_room(treasury: &BridgeTreasury): &SimpleMap<vector<u8>, ForeignTokenRegistration> {
     //     &treasury.waiting_room
     // }
-    //
+
     // #[test_only]
     // public fun treasuries(treasury: &BridgeTreasury): &ObjectBag {
     //     &treasury.treasuries
