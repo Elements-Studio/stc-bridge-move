@@ -2,7 +2,6 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::ChainIDs {
-    use StarcoinFramework::Errors;
     use StarcoinFramework::Vector;
     use StarcoinFramework::ChainId;
 
@@ -66,13 +65,13 @@ module Bridge::ChainIDs {
         vector[
             BridgeRoute { source: ChainId::main(), destination: ETH_MAINNET },
             BridgeRoute { source: ETH_MAINNET, destination: ChainId::main() },
-            BridgeRoute { source: ChainId::proxima(), destination: ETH_SEPOLIA },
+            BridgeRoute { source: ChainId::test(), destination: ETH_SEPOLIA },
             BridgeRoute { source: ChainId::test(), destination: ETH_CUSTOM },
             BridgeRoute { source: ChainId::dev(), destination: ETH_CUSTOM },
             BridgeRoute { source: ChainId::dev(), destination: ETH_SEPOLIA },
             BridgeRoute { source: ETH_SEPOLIA, destination: ChainId::test() },
-            BridgeRoute { source: ETH_SEPOLIA, destination: ChainId::test() },
-            BridgeRoute { source: ETH_CUSTOM, destination: ChainId::dev() },
+            BridgeRoute { source: ETH_SEPOLIA, destination: ChainId::dev() },
+            BridgeRoute { source: ETH_CUSTOM, destination: ChainId::test() },
             BridgeRoute { source: ETH_CUSTOM, destination: ChainId::dev() },
         ]
     }
@@ -85,7 +84,7 @@ module Bridge::ChainIDs {
     // Checks and return BridgeRoute if the route is supported by the bridge.
     public fun get_route(source: u8, destination: u8): BridgeRoute {
         let route = BridgeRoute { source, destination };
-        assert!(Vector::contains(&valid_routes(), &route), Errors::invalid_state(EInvalidBridgeRoute));
+        assert!(Vector::contains(&valid_routes(), &route), EInvalidBridgeRoute);
         route
     }
 
@@ -122,6 +121,7 @@ module Bridge::ChainIDs {
 
     #[test]
     fun test_routes() {
+        use StarcoinFramework::Debug;
         let valid_routes = vector[
             BridgeRoute { source: ChainId::main(), destination: ETH_MAINNET },
             BridgeRoute { source: ETH_MAINNET, destination: ChainId::main() },
@@ -138,27 +138,31 @@ module Bridge::ChainIDs {
         while (size > 0) {
             size = size - 1;
             let route = Vector::borrow(&valid_routes, size);
+            if (!is_valid_route(route.source, route.destination)) {
+                Debug::print(&route.source);
+                Debug::print(&route.destination);
+            };
             assert!(is_valid_route(route.source, route.destination), 1); // sould not assert
         }
     }
 
     #[test, expected_failure(abort_code = EInvalidBridgeRoute)]
-    fun test_routes_err_sui_1() {
+    fun test_routes_err_stc_1() {
         get_route(ChainId::main(), ChainId::main());
     }
 
     #[test, expected_failure(abort_code = EInvalidBridgeRoute)]
-    fun test_routes_err_sui_2() {
+    fun test_routes_err_stc_2() {
         get_route(ChainId::main(), ChainId::test());
     }
 
     #[test, expected_failure(abort_code = EInvalidBridgeRoute)]
-    fun test_routes_err_sui_3() {
+    fun test_routes_err_stc_3() {
         get_route(ChainId::main(), ETH_SEPOLIA);
     }
 
     #[test, expected_failure(abort_code = EInvalidBridgeRoute)]
-    fun test_routes_err_sui_4() {
+    fun test_routes_err_stc_4() {
         get_route(ChainId::main(), ETH_CUSTOM);
     }
 
