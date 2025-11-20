@@ -4,9 +4,8 @@
 
 #[test_only]
 module Bridge::MessageTests {
-    use Bridge::BCSUtil;
-    use StarcoinFramework::Debug;
     use Bridge::AssetUtil;
+    use Bridge::BCSUtil;
     use Bridge::BTC::BTC;
     use Bridge::ChainIDs;
     use Bridge::ETH::ETH;
@@ -51,6 +50,7 @@ module Bridge::MessageTests {
     use Bridge::USDT;
     use StarcoinFramework::Account;
     use StarcoinFramework::BCS;
+    use StarcoinFramework::Debug;
     use StarcoinFramework::STC::STC;
     use StarcoinFramework::Token;
     use StarcoinFramework::Vector;

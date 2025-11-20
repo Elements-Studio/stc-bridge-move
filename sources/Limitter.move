@@ -228,78 +228,80 @@ module Bridge::Limitter {
 
         transfer_limits
     }
+
+    //////////////////////////////////////////////////////
+    // Test functions
     //
-    // //////////////////////////////////////////////////////
-    // // Test functions
-    // //
+
+    #[test_only]
+    public fun transfer_limits(limiter: &TransferLimiter): &SimpleMap<BridgeRoute, u64> {
+        &limiter.transfer_limits
+    }
+
+    #[test_only]
+    public fun transfer_limits_mut(
+        limiter: &mut TransferLimiter,
+    ): &mut SimpleMap<BridgeRoute, u64> {
+        &mut limiter.transfer_limits
+    }
+
     //
-    // #[test_only]
-    // public entry fun transfer_limits(limiter: &TransferLimiter): &VecMap<BridgeRoute, u64> {
-    //     &limiter.transfer_limits
-    // }
+    #[test_only]
+    public fun transfer_records(
+        limiter: &TransferLimiter,
+    ): &SimpleMap<BridgeRoute, TransferRecord> {
+        &limiter.transfer_records
+    }
+
+    #[test_only]
+    public fun transfer_records_mut(
+        limiter: &mut TransferLimiter,
+    ): &mut SimpleMap<BridgeRoute, TransferRecord> {
+        &mut limiter.transfer_records
+    }
+
+    #[test_only]
+    public fun usd_value_multiplier(): u64 {
+        USD_VALUE_MULTIPLIER
+    }
+
+    #[test_only]
+    public fun max_transfer_limit(): u64 {
+        MAX_TRANSFER_LIMIT
+    }
+
+    #[test_only]
+    public fun make_transfer_limiter(): TransferLimiter {
+        TransferLimiter {
+            transfer_limits: SimpleMap::create<BridgeRoute, u64>(),
+            transfer_records: SimpleMap::create<BridgeRoute, TransferRecord>(),
+        }
+    }
+
     //
-    // #[test_only]
-    // public entry fun transfer_limits_mut(
-    //     limiter: &mut TransferLimiter,
-    // ): &mut VecMap<BridgeRoute, u64> {
-    //     &mut limiter.transfer_limits
-    // }
-    //
-    // #[test_only]
-    // public entry fun transfer_records(
-    //     limiter: &TransferLimiter,
-    // ): &VecMap<BridgeRoute, TransferRecord> {
-    //     &limiter.transfer_records
-    // }
-    //
-    // #[test_only]
-    // public entry fun transfer_records_mut(
-    //     limiter: &mut TransferLimiter,
-    // ): &mut VecMap<BridgeRoute, TransferRecord> {
-    //     &mut limiter.transfer_records
-    // }
-    //
-    // #[test_only]
-    // public entry fun usd_value_multiplier(): u64 {
-    //     USD_VALUE_MULTIPLIER
-    // }
-    //
-    // #[test_only]
-    // public entry fun max_transfer_limit(): u64 {
-    //     MAX_TRANSFER_LIMIT
-    // }
-    //
-    // #[test_only]
-    // public entry fun make_transfer_limiter(): TransferLimiter {
-    //     TransferLimiter {
-    //         transfer_limits: vec_map::empty(),
-    //         transfer_records: vec_map::empty(),
-    //     }
-    // }
-    //
-    // #[test_only]
-    // public entry fun total_amount(record: &TransferRecord): u64 {
-    //     record.total_amount
-    // }
-    //
-    // #[test_only]
-    // public entry fun per_hour_amounts(record: &TransferRecord): &vector<u64> {
-    //     &record.per_hour_amounts
-    // }
-    //
-    // #[test_only]
-    // public entry fun hour_head(record: &TransferRecord): u64 {
-    //     record.hour_head
-    // }
-    //
-    // #[test_only]
-    // public entry fun hour_tail(record: &TransferRecord): u64 {
-    //     record.hour_tail
-    // }
-    //
-    // #[test_only]
-    // public entry fun unpack_route_limit_event(event: UpdateRouteLimitEvent): (u8, u8, u64) {
-    //     (event.sending_chain, event.receiving_chain, event.new_limit)
-    // }
+    #[test_only]
+    public fun total_amount(record: &TransferRecord): u64 {
+        record.total_amount
+    }
+
+    #[test_only]
+    public fun per_hour_amounts(record: &TransferRecord): &vector<u64> {
+        &record.per_hour_amounts
+    }
+
+    #[test_only]
+    public fun hour_head(record: &TransferRecord): u64 {
+        record.hour_head
+    }
+
+    #[test_only]
+    public fun hour_tail(record: &TransferRecord): u64 {
+        record.hour_tail
+    }
+
+    #[test_only]
+    public fun unpack_route_limit_event(event: UpdateRouteLimitEvent): (u8, u8, u64) {
+        (event.sending_chain, event.receiving_chain, event.new_limit)
+    }
 }
 
