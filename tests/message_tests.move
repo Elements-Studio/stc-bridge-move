@@ -649,7 +649,7 @@ module Bridge::MessageTests {
             ],
             vector[100, 100],
         );
-        assert!(required_voting_power(&message) == 5001,2);
+        assert!(required_voting_power(&message) == 5001, 2);
 
 
         let message = create_emergency_op_message(
