@@ -4,8 +4,8 @@
 
 #[test_only]
 module Bridge::MessageTests {
-
-    use StarcoinFramework::Account;
+    use Bridge::BCSUtil;
+    use StarcoinFramework::Debug;
     use Bridge::AssetUtil;
     use Bridge::BTC::BTC;
     use Bridge::ChainIDs;
@@ -49,16 +49,20 @@ module Bridge::MessageTests {
     use Bridge::Treasury::{Self, token_id};
     use Bridge::USDC::USDC;
     use Bridge::USDT;
+    use StarcoinFramework::Account;
     use StarcoinFramework::BCS;
+    use StarcoinFramework::STC::STC;
     use StarcoinFramework::Token;
     use StarcoinFramework::Vector;
 
     const INVALID_CHAIN: u8 = 42;
 
-    #[test(bridge= @Bridge)]
-    fun test_message_serialization_starcoin_to_eth(bridge: &signer) {
+    #[test(bridge = @Bridge)]
+    fun test_message_serialization_starcoin_to_eth(bridge: signer) {
         let sender_address = @0x64;
-        let token = AssetUtil::quick_mint_for_test<USDT::USDT>(bridge, 12345);
+        Account::create_account_with_address<STC>(@Bridge);
+        Account::set_auto_accept_token(&bridge, true);
+        let token = AssetUtil::quick_mint_for_test<USDT::USDT>(&bridge, 12345);
 
         let token_bridge_message = default_token_bridge_message(
             sender_address,
@@ -75,6 +79,7 @@ module Bridge::MessageTests {
             3u8,
             (Token::value(&token) as u64),
         );
+
         let payload = Message::extract_token_bridge_payload(&token_bridge_message);
         assert!(Message::token_target_chain(&payload) == Message::token_target_chain(&token_payload), 1);
         assert!(Message::token_target_address(&payload) == Message::token_target_address(&token_payload), 2);
@@ -84,17 +89,19 @@ module Bridge::MessageTests {
 
         // Test message serialization
         let message = Message::serialize_message(token_bridge_message);
-        let expected_msg = x"0001000000000000000a012000000000000000000000000000000000000000000000000000000000000000640b1400000000000000000000000000000000000000c8030000000000003039";
-
+        let expected_msg = x"0001000000000000000aff10000000000000000000000000000000640b1400000000000000000000000000000000000000c8030000000000003039";
         assert!(message == expected_msg, 6);
         assert!(token_bridge_message == Message::deserialize_message_test_only(message), 7);
 
-        Account::deposit(sender_address, token);
+        Account::deposit_with_metadata(@Bridge, token, Vector::empty<u8>());
     }
 
 
     #[test(bridge = @Bridge)]
     fun test_message_serialization_eth_to_starcoin(bridge: &signer) {
+        Account::create_account_with_address<STC>(@Bridge);
+        Account::set_auto_accept_token(bridge, true);
+
         let address_1 = @0x64;
         let token = AssetUtil::quick_mint_for_test<USDT::USDT>(bridge, 12345);
 
@@ -122,7 +129,7 @@ module Bridge::MessageTests {
         // Test message serialization
         let message = serialize_message(token_bridge_message);
         let expected_msg =
-            x"0001000000000000000a0b1400000000000000000000000000000000000000c801200000000000000000000000000000000000000000000000000000000000000064030000000000003039";
+            x"0001000000000000000a0b1400000000000000000000000000000000000000c8ff1000000000000000000000000000000064030000000000003039";
         assert!(message == expected_msg, 2);
         assert!(Message::deserialize_message_test_only(message) == token_bridge_message, 3);
 
@@ -703,7 +710,6 @@ module Bridge::MessageTests {
         required_voting_power(&message);
     }
 
-    //
     fun default_token_bridge_message<T: store>(
         sender: address,
         token: &Token::Token<T>,
@@ -802,5 +808,42 @@ module Bridge::MessageTests {
         let validator_pub_key2 = x"f7e93cc543d97af6632c9b8864417379dba4bf15";
         let validator_eth_addresses = vector[validator_pub_key1, validator_pub_key2];
         create_blocklist_message(ChainIDs::starcoin_testnet(), 10, 0, validator_eth_addresses)
+    }
+
+    #[test]
+    fun test_create_token_bridge_message() {
+        let message = create_token_bridge_message(
+            1,
+            1,
+            BCS::to_bytes(&@0x1),
+            12,
+            x"00000000000000000000000000000000000000c8",
+            23,
+            12345
+        );
+        let payload = Message::payload(&message);
+        Vector::reverse(&mut payload);
+        Debug::print(&payload);
+
+        let address = BCSUtil::peel_vec_u8(&mut payload);
+        Debug::print(&address);
+        assert!(BCS::to_address(address) == @0x1, 1);
+
+        let target_chain = BCSUtil::peel_u8(&mut payload);
+        Debug::print(&target_chain);
+        assert!(target_chain == 12, 2);
+
+        let target_address = BCSUtil::peel_vec_u8(&mut payload);
+        Debug::print(&target_address);
+        assert!(target_address == x"00000000000000000000000000000000000000c8", 3);
+
+        let token_type = BCSUtil::peel_u8(&mut payload);
+        Debug::print(&token_type);
+        assert!(token_type == 23, 4);
+
+        Debug::print(&payload);
+        let amount = Message::peel_u64_be(&mut payload);
+        Debug::print(&amount);
+        assert!(amount == 12345, 5);
     }
 }

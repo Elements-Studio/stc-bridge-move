@@ -27,7 +27,6 @@ module Bridge::AssetUtil {
     public fun initialize<T: store>(bridge: &signer, precision: u8, ): (MintCapability<T>, BurnCapability<T>) {
         assert!(Signer::address_of(bridge) == @Bridge, EInvalidSender);
         Token::register_token<T>(bridge, precision);
-
         (Token::remove_mint_capability<T>(bridge), Token::remove_burn_capability<T>(bridge))
     }
 

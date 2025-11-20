@@ -2,6 +2,7 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::BCSUtil {
+    use StarcoinFramework::Debug;
     use StarcoinFramework::Errors;
     use StarcoinFramework::Vector;
 
@@ -9,7 +10,7 @@ module Bridge::BCSUtil {
     const ELenOutOfRange: u64 = 2;
     const ENotBool: u64 = 3;
 
-    fun peel_vec_length(bcs: &mut vector<u8>): u64 {
+    public fun peel_vec_length(bcs: &mut vector<u8>): u64 {
         let (total, shift, len) = (0u64, 0, 0);
         loop {
             assert!(len <= 4, ELenOutOfRange);
@@ -97,6 +98,7 @@ module Bridge::BCSUtil {
     /// Peel a vector of `u8` (eg string) from serialized bytes.
     public fun peel_vec_u8(bcs: &mut vector<u8>): vector<u8> {
         let len = Self::peel_vec_length(bcs);
+        Debug::print(&len);
         let v = vector[];
         let i = 0;
         while (i < len) {

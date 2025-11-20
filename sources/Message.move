@@ -2,10 +2,9 @@
 // SPDX-License-Identifier: Apache-2.0
 
 module Bridge::Message {
-
-    use Bridge::MessageTypes;
     use Bridge::BCSUtil;
     use Bridge::ChainIDs;
+    use Bridge::MessageTypes;
     use StarcoinFramework::BCS;
     use StarcoinFramework::Vector;
 
@@ -99,15 +98,17 @@ module Bridge::Message {
     // Therefore their length can be represented by a single byte.
     // See `create_token_bridge_message` for the actual encoding rule.
     public fun extract_token_bridge_payload(message: &BridgeMessage): TokenTransferPayload {
-        let bcs = BCS::to_bytes(&message.payload);
-        let sender_address = BCSUtil::peel_vec_u8(&mut bcs);
-        let target_chain = BCSUtil::peel_u8(&mut bcs);
-        let target_address = BCSUtil::peel_vec_u8(&mut bcs);
-        let token_type = BCSUtil::peel_u8(&mut bcs);
-        let amount = Self::peel_u64_be(&mut bcs);
+        let payload = Self::payload(message);
+        Vector::reverse(&mut payload);
+
+        let sender_address = BCSUtil::peel_vec_u8(&mut payload);
+        let target_chain = BCSUtil::peel_u8(&mut payload);
+        let target_address = BCSUtil::peel_vec_u8(&mut payload);
+        let token_type = BCSUtil::peel_u8(&mut payload);
+        let amount = Self::peel_u64_be(&mut payload);
 
         ChainIDs::assert_valid_chain_id(target_chain);
-        assert!(Vector::is_empty(&BCSUtil::into_remainder_bytes(bcs)), ETrailingBytes);
+        assert!(Vector::is_empty(&BCSUtil::into_remainder_bytes(payload)), ETrailingBytes);
 
         TokenTransferPayload {
             sender_address,
@@ -127,7 +128,8 @@ module Bridge::Message {
     public fun extract_blocklist_payload(message: &BridgeMessage): Blocklist {
         // blocklist payload should consist of one byte blocklist type, and list of 20 bytes evm addresses
         // derived from ECDSA public keys
-        let bcs = BCS::to_bytes(&message.payload);
+        let bcs = Self::payload(message);
+        Vector::reverse(&mut bcs);
         let blocklist_type = BCSUtil::peel_u8(&mut bcs);
         let address_count = BCSUtil::peel_u8(&mut bcs);
 
@@ -154,7 +156,8 @@ module Bridge::Message {
     }
 
     public fun extract_update_bridge_limit(message: &BridgeMessage): UpdateBridgeLimit {
-        let bcs = BCS::to_bytes(&message.payload);
+        let bcs = Self::payload(message);
+        Vector::reverse(&mut bcs);
         let sending_chain = BCSUtil::peel_u8(&mut bcs);
         let limit = peel_u64_be(&mut bcs);
 
@@ -169,7 +172,8 @@ module Bridge::Message {
     }
 
     public fun extract_update_asset_price(message: &BridgeMessage): UpdateAssetPrice {
-        let bcs = BCS::to_bytes(&message.payload);
+        let bcs = Self::payload(message);
+        Vector::reverse(&mut bcs);
         let token_id = BCSUtil::peel_u8(&mut bcs);
         let new_price = peel_u64_be(&mut bcs);
 
@@ -182,7 +186,7 @@ module Bridge::Message {
     }
 
     public fun extract_add_tokens_on_starcoin(message: &BridgeMessage): AddTokenOnStarcoin {
-        let bcs = BCS::to_bytes(&message.payload);
+        let bcs = Self::payload(message);
         let native_token = BCSUtil::peel_bool(&mut bcs);
         let token_ids = BCSUtil::peel_vec_u8(&mut bcs);
         let token_type_names_bytes = BCSUtil::peel_vec_vec_u8(&mut bcs);
@@ -260,7 +264,8 @@ module Bridge::Message {
         // bcs serialzies u64 as 8 bytes
         Vector::append(&mut payload, reverse_bytes(BCS::to_bytes(&amount)));
 
-        assert!(Vector::length(&payload) == 64, EInvalidPayloadLength);
+        // Starcoin addres length is 16, ETH address is 20, and fixed length is 12
+        assert!(Vector::length(&payload) == 48, EInvalidPayloadLength);
 
         BridgeMessage {
             message_type: MessageTypes::token(),
@@ -566,7 +571,7 @@ module Bridge::Message {
         bytes
     }
 
-    fun peel_u64_be(bcs: &mut vector<u8>): u64 {
+    public fun peel_u64_be(bcs: &mut vector<u8>): u64 {
         let (value, i) = (0u64, 64u8);
         while (i > 0) {
             i = i - 8;
@@ -622,12 +627,12 @@ module Bridge::Message {
 
     #[test_only]
     public fun deserialize_message_test_only(message: vector<u8>): BridgeMessage {
-        let bcs = BCS::to_bytes(&message);
-        let message_type = BCSUtil::peel_u8(&mut bcs);
-        let message_version = BCSUtil::peel_u8(&mut bcs);
-        let seq_num = peel_u64_be_for_testing(&mut bcs);
-        let source_chain = BCSUtil::peel_u8(&mut bcs);
-        let payload = BCSUtil::into_remainder_bytes(bcs);
+        Vector::reverse(&mut message);
+        let message_type = BCSUtil::peel_u8(&mut message);
+        let message_version = BCSUtil::peel_u8(&mut message);
+        let seq_num = peel_u64_be_for_testing(&mut message);
+        let source_chain = BCSUtil::peel_u8(&mut message);
+        let payload = BCSUtil::into_remainder_bytes(message);
         make_generic_message(
             message_type,
             message_version,
