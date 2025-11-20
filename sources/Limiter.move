@@ -1,7 +1,7 @@
 // Copyright (c) Starcoin Contributors
 // SPDX-License-Identifier: Apache-2.0
 
-module Bridge::Limitter {
+module Bridge::Limiter {
     use Bridge::ChainIDs::{Self, BridgeRoute};
     use Bridge::Treasury;
     use Bridge::Treasury::BridgeTreasury;
@@ -26,7 +26,7 @@ module Bridge::Limitter {
         transfer_records: SimpleMap<BridgeRoute, TransferRecord>,
     }
 
-    struct TransferRecord has store {
+    struct TransferRecord has copy, store, drop {
         hour_head: u64,
         hour_tail: u64,
         per_hour_amounts: vector<u64>,
@@ -68,6 +68,10 @@ module Bridge::Limitter {
             transfer_limits: initial_transfer_limits(),
             transfer_records: SimpleMap::create(),
         }
+    }
+
+    public fun destroy(limitter: TransferLimiter) {
+        let TransferLimiter { transfer_limits: _, transfer_records: _ } = limitter;
     }
 
     public fun check_and_record_sending_transfer<T: store>(

@@ -4,7 +4,7 @@
 module Bridge::Bridge {
     use Bridge::ChainIDs;
     use Bridge::Committee::{Self, BridgeCommittee};
-    use Bridge::Limitter::{Self, TransferLimiter};
+    use Bridge::Limiter::{Self, TransferLimiter};
     use Bridge::Message::{
         Self,
         AddTokenOnStarcoin,
@@ -148,7 +148,7 @@ module Bridge::Bridge {
 
         Treasury::initialize(bridge);
         Committee::initialize(bridge);
-        Limitter::initialize(bridge);
+        Limiter::initialize(bridge);
 
         move_to(bridge, EventHandlePod {
             token_transfer_approved: Event::new_event_handle<TokenTransferApproved>(bridge),
@@ -168,7 +168,7 @@ module Bridge::Bridge {
             committee: Committee::create(),
             treasury: Treasury::create(),
             token_transfer_records: SimpleMap::create<BridgeMessageKey, BridgeRecord>(),
-            limiter: Limitter::new(),
+            limiter: Limiter::new(),
             paused: false,
         };
 
@@ -554,7 +554,7 @@ module Bridge::Bridge {
         let amount = Message::token_amount(&token_payload);
 
         // Make sure transfer is within limit.
-        let exceed = Limitter::check_and_record_sending_transfer<T>(
+        let exceed = Limiter::check_and_record_sending_transfer<T>(
             &mut inner.limiter,
             &inner.treasury,
             clock_timestamp_ms,
@@ -602,7 +602,7 @@ module Bridge::Bridge {
             receiving_chain,
         );
 
-        Limitter::update_route_limit(
+        Limiter::update_route_limit(
             &mut inner.limiter,
             &route,
             Message::update_bridge_limit_payload_limit(&payload),
