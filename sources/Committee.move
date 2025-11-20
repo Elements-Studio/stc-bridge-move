@@ -260,7 +260,7 @@ module Bridge::Committee {
 
     // This function applys the blocklist to the committee members, we won't need to run this very often so this is not gas optimised.
     // TODO: add tests for this function
-    public entry fun execute_blocklist(self: &mut BridgeCommittee, blocklist: Blocklist) acquires EventHandlePod {
+    public fun execute_blocklist(self: &mut BridgeCommittee, blocklist: Blocklist) acquires EventHandlePod {
         let blocklisted = Message::blocklist_type(&blocklist) != 1;
         let eth_addresses = Message::blocklist_validator_addresses(&blocklist);
         let list_len = Vector::length(eth_addresses);
