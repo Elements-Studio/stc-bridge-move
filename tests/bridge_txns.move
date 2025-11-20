@@ -25,10 +25,10 @@
 //
 // #[test]
 // fun test_limits() {
-//     let mut env = create_env(chain_ids::sui_custom());
+//     let mut env = create_env(ChainIDs::sui_custom());
 //     env.create_bridge_default();
 //
-//     let source_chain = chain_ids::eth_custom();
+//     let source_chain = ChainIDs::eth_custom();
 //     let sui_address = @0xABCDEF;
 //     let eth_address = x"0000000000000000000000000000000000001234";
 //
@@ -69,10 +69,10 @@
 //
 // #[test]
 // fun test_bridge_and_claim() {
-//     let mut env = create_env(chain_ids::sui_custom());
+//     let mut env = create_env(ChainIDs::sui_custom());
 //     env.create_bridge_default();
 //
-//     let source_chain = chain_ids::eth_custom();
+//     let source_chain = ChainIDs::eth_custom();
 //     let sui_address = @0xABCDEF;
 //     let eth_address = x"0000000000000000000000000000000000001234";
 //     let amount = 1000;
@@ -210,7 +210,7 @@
 //
 // #[test, expected_failure(abort_code = bridge::committee::ESignatureBelowThreshold)]
 // fun test_blocklist() {
-//     let mut env = create_env(chain_ids::sui_custom());
+//     let mut env = create_env(ChainIDs::sui_custom());
 //     let validators = vector[
 //         create_validator(@0xAAAA, 100, &b"1234567890_1234567890_1234567890"),
 //         create_validator(@0xBBBB, 100, &b"234567890_1234567890_1234567890_"),
@@ -225,7 +225,7 @@
 //     env.init_committee(sender);
 //     env.setup_treasury(sender);
 //
-//     let source_chain = chain_ids::eth_custom();
+//     let source_chain = ChainIDs::eth_custom();
 //     let sui_address = @0xABCDEF;
 //     let eth_address = x"0000000000000000000000000000000000001234";
 //     let amount = 1000;
@@ -275,7 +275,7 @@
 // #[test]
 // fun test_system_messages() {
 //     let addr = @0xABCDEF0123; // random address
-//     let mut env = create_env(chain_ids::sui_custom());
+//     let mut env = create_env(ChainIDs::sui_custom());
 //     env.create_bridge_default();
 //
 //     env.update_asset_price(addr, eth_id(), 735);

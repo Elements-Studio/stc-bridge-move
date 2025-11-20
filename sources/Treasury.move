@@ -46,7 +46,7 @@ module Bridge::Treasury {
         burn_cap: Token::BurnCapability<T>
     }
 
-    struct ForeignTokenRegistration has store {
+    struct ForeignTokenRegistration has store, drop {
         type_name: vector<u8>,
         decimal: u8,
     }
@@ -106,6 +106,10 @@ module Bridge::Treasury {
             id_token_type_map: SimpleMap::create<u8, vector<u8>>(),
             waiting_room: SimpleMap::create<vector<u8>, ForeignTokenRegistration>(),
         }
+    }
+
+    public fun destroy(t: BridgeTreasury) {
+        let BridgeTreasury { supported_tokens: _, id_token_type_map: _, waiting_room: _ } = t;
     }
 
     //////////////////////////////////////////////////////

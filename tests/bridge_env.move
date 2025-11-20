@@ -1095,7 +1095,7 @@
 //         let scenario = env.scenario();
 //         scenario.next_tx(@0x0);
 //         let bridge = scenario.take_shared<Bridge>();
-//         let route = chain_ids::get_route(dest, env.chain_id);
+//         let route = ChainIDs::get_route(dest, env.chain_id);
 //         let limits = bridge.test_load_inner().inner_limiter().get_route_limit(&route);
 //         test_scenario::return_shared(bridge);
 //         limits

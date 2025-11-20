@@ -21,13 +21,10 @@ module Bridge::Bridge {
     use StarcoinFramework::BCS;
     use StarcoinFramework::Errors;
     use StarcoinFramework::Event;
-    use StarcoinFramework::Option;
-    use StarcoinFramework::Option::Option;
+    use StarcoinFramework::Option::{Self, Option};
     use StarcoinFramework::Signer;
-    use StarcoinFramework::SimpleMap;
-    use StarcoinFramework::SimpleMap::SimpleMap;
-    use StarcoinFramework::Token;
-    use StarcoinFramework::Token::Token;
+    use StarcoinFramework::SimpleMap::{Self, SimpleMap};
+    use StarcoinFramework::Token::{Self, Token};
     use StarcoinFramework::Vector;
 
     const MESSAGE_VERSION: u8 = 1;
@@ -681,7 +678,7 @@ module Bridge::Bridge {
         let message = &record.message;
         Option::some(Message::to_parsed_token_transfer_message(message))
     }
-    //
+
     // //////////////////////////////////////////////////////
     // // Test functions
     // //
