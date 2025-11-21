@@ -695,7 +695,7 @@ module Bridge::Bridge {
     //         bridge_version: CURRENT_VERSION,
     //         message_version: MESSAGE_VERSION,
     //         chain_id,
-    //         sequence_nums: vec_map::empty(),
+    //         sequence_nums: SimpleMap::empty(),
     //         committee: committee::create(ctx),
     //         treasury: treasury::create(ctx),
     //         token_transfer_records: linked_table::new(ctx),
@@ -718,7 +718,7 @@ module Bridge::Bridge {
     // #[test_only]
     // public fun test_init_bridge_committee(
     //     bridge: &mut Bridge,
-    //     active_validator_voting_power: VecMap<address, u64>,
+    //     active_validator_voting_power: SimpleMap<address, u64>,
     //     min_stake_participation_percentage: u64,
     //     ctx: &TxContext,
     // ) {
@@ -820,7 +820,7 @@ module Bridge::Bridge {
     // }
     //
     // #[test_only]
-    // public fun sequence_nums(bridge_inner: &BridgeInner): &VecMap<u8, u64> {
+    // public fun sequence_nums(bridge_inner: &BridgeInner): &SimpleMap<u8, u64> {
     //     &bridge_inner.sequence_nums
     // }
     //

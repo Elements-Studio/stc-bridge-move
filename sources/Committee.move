@@ -3,9 +3,10 @@
 
 module Bridge::Committee {
 
-    use Bridge::EcdsaK1;
     use Bridge::Crypto;
+    use Bridge::EcdsaK1;
     use Bridge::Message::{Self, Blocklist, BridgeMessage};
+
     use StarcoinFramework::Errors;
     use StarcoinFramework::Event;
     use StarcoinFramework::Signer;
@@ -348,69 +349,74 @@ module Bridge::Committee {
         };
     }
 
-    // //////////////////////////////////////////////////////
-    // // Test functions
-    // //
+    //////////////////////////////////////////////////////
+    // Test functions
     //
-    // #[test_only]
-    // public entry fun members(self: &BridgeCommittee): &VecMap<vector<u8>, CommitteeMember> {
-    //     &self.members
-    // }
-    //
-    // #[test_only]
-    // public entry fun voting_power(member: &CommitteeMember): u64 {
-    //     member.voting_power
-    // }
-    //
-    // #[test_only]
-    // public entry fun http_rest_url(member: &CommitteeMember): vector<u8> {
-    //     member.http_rest_url
-    // }
-    //
-    // #[test_only]
-    // public entry fun member_registrations(
-    //     self: &BridgeCommittee,
-    // ): &VecMap<address, CommitteeMemberRegistration> {
-    //     &self.member_registrations
-    // }
-    //
-    // #[test_only]
-    // public entry fun blocklisted(member: &CommitteeMember): bool {
-    //     member.blocklisted
-    // }
-    //
-    // #[test_only]
-    // public entry fun bridge_pubkey_bytes(registration: &CommitteeMemberRegistration): &vector<u8> {
-    //     &registration.bridge_pubkey_bytes
-    // }
-    //
-    // #[test_only]
-    // public entry fun make_bridge_committee(
-    //     members: VecMap<vector<u8>, CommitteeMember>,
-    //     member_registrations: VecMap<address, CommitteeMemberRegistration>,
-    //     last_committee_update_epoch: u64,
-    // ): BridgeCommittee {
-    //     BridgeCommittee {
-    //         members,
-    //         member_registrations,
-    //         last_committee_update_epoch,
-    //     }
-    // }
-    //
-    // #[test_only]
-    // public entry fun make_committee_member(
-    //     sui_address: address,
-    //     bridge_pubkey_bytes: vector<u8>,
-    //     voting_power: u64,
-    //     http_rest_url: vector<u8>,
-    //     blocklisted: bool,
-    // ): CommitteeMember {
-    //     CommitteeMember {
-    //         sui_address,
-    //         bridge_pubkey_bytes,
-    //         voting_power,
-    //         http_rest_url,
-    //         blocklisted,
-    //     }
-    // }
+
+    #[test_only]
+    public fun members(self: &BridgeCommittee): &SimpleMap<vector<u8>, CommitteeMember> {
+        &self.members
+    }
+
+    #[test_only]
+    public fun voting_power(member: &CommitteeMember): u64 {
+        member.voting_power
+    }
+
+    #[test_only]
+    public fun http_rest_url(member: &CommitteeMember): vector<u8> {
+        member.http_rest_url
+    }
+
+    #[test_only]
+    public fun member_registrations(
+        self: &BridgeCommittee,
+    ): &SimpleMap<address, CommitteeMemberRegistration> {
+        &self.member_registrations
+    }
+
+    #[test_only]
+    public fun blocklisted(member: &CommitteeMember): bool {
+        member.blocklisted
+    }
+
+    #[test_only]
+    public fun bridge_pubkey_bytes(registration: &CommitteeMemberRegistration): &vector<u8> {
+        &registration.bridge_pubkey_bytes
+    }
+
+    #[test_only]
+    public fun make_bridge_committee(
+        members: SimpleMap<vector<u8>, CommitteeMember>,
+        member_registrations: SimpleMap<address, CommitteeMemberRegistration>,
+        last_committee_update_epoch: u64,
+    ): BridgeCommittee {
+        BridgeCommittee {
+            members,
+            member_registrations,
+            last_committee_update_epoch,
+        }
+    }
+
+    #[test_only]
+    public fun destroy(committee: BridgeCommittee) {
+        let BridgeCommittee { members: _, member_registrations: _, last_committee_update_epoch: _ } = committee;
+    }
+
+    #[test_only]
+    public fun make_committee_member(
+        starcoin_address: address,
+        bridge_pubkey_bytes: vector<u8>,
+        voting_power: u64,
+        http_rest_url: vector<u8>,
+        blocklisted: bool,
+    ): CommitteeMember {
+        CommitteeMember {
+            starcoin_address,
+            bridge_pubkey_bytes,
+            voting_power,
+            http_rest_url,
+            blocklisted,
+        }
+    }
 }
