@@ -284,7 +284,7 @@ module Bridge::Bridge {
     }
 
 
-    // Record bridge message approvals in Sui, called by the bridge client
+    // Record bridge message approvals in Starcoin, called by the bridge client
     // If already approved, return early instead of aborting.
     public fun approve_token_transfer(
         bridge: &mut Bridge,
@@ -432,57 +432,57 @@ module Bridge::Bridge {
         };
     }
 
+
+    //////////////////////////////////////////////////////
+    // DevInspect Functions for Read
     //
-    // //////////////////////////////////////////////////////
-    // // DevInspect Functions for Read
-    // //
-    //
-    // #[allow(unused_function)]
-    // fun get_token_transfer_action_status(bridge: &Bridge, source_chain: u8, bridge_seq_num: u64): u8 {
-    //     let inner = load_inner(bridge);
-    //     let key = message::create_key(
-    //         source_chain,
-    //         MessageTypes::token(),
-    //         bridge_seq_num,
-    //     );
-    //
-    //     if (!inner.token_transfer_records.contains(key)) {
-    //         return TRANSFER_STATUS_NOT_FOUND
-    //     };
-    //
-    //     let record = &inner.token_transfer_records[key];
-    //     if (record.claimed) {
-    //         return TRANSFER_STATUS_CLAIMED
-    //     };
-    //
-    //     if (record.verified_signatures.is_some()) {
-    //         return TRANSFER_STATUS_APPROVED
-    //     };
-    //
-    //     TRANSFER_STATUS_PENDING
-    // }
-    //
-    // #[allow(unused_function)]
-    // fun get_token_transfer_action_signatures(
-    //     bridge: &Bridge,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    // ): Option<vector<vector<u8>>> {
-    //     let inner = load_inner(bridge);
-    //     let key = message::create_key(
-    //         source_chain,
-    //         MessageTypes::token(),
-    //         bridge_seq_num,
-    //     );
-    //
-    //     if (!inner.token_transfer_records.contains(key)) {
-    //         return Option::none()
-    //     };
-    //
-    //     let record = &inner.token_transfer_records[key];
-    //     record.verified_signatures
-    // }
-    //
+
+    #[allow(unused_function)]
+    fun get_token_transfer_action_status(bridge: &Bridge, source_chain: u8, bridge_seq_num: u64): u8 {
+        let inner = load_inner(bridge);
+        let key = Message::create_key(
+            source_chain,
+            MessageTypes::token(),
+            bridge_seq_num,
+        );
+
+        if (!SimpleMap::contains_key(&inner.token_transfer_records, &key)) {
+            return TRANSFER_STATUS_NOT_FOUND
+        };
+
+        let record = SimpleMap::borrow(&inner.token_transfer_records, &key);
+        if (record.claimed) {
+            return TRANSFER_STATUS_CLAIMED
+        };
+
+        if (Option::is_some(&record.verified_signatures)) {
+            return TRANSFER_STATUS_APPROVED
+        };
+
+        TRANSFER_STATUS_PENDING
+    }
+
+    #[allow(unused_function)]
+    fun get_token_transfer_action_signatures(
+        bridge: &Bridge,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ): Option<vector<vector<u8>>> {
+        let inner = load_inner(bridge);
+        let key = Message::create_key(
+            source_chain,
+            MessageTypes::token(),
+            bridge_seq_num,
+        );
+
+        if (!SimpleMap::contains_key(&inner.token_transfer_records, &key)) {
+            return Option::none()
+        };
+
+        let record = SimpleMap::borrow(&inner.token_transfer_records, &key);
+        record.verified_signatures
+    }
+
     // //////////////////////////////////////////////////////
     // // Internal functions
 
@@ -679,265 +679,256 @@ module Bridge::Bridge {
         Option::some(Message::to_parsed_token_transfer_message(message))
     }
 
-    // //////////////////////////////////////////////////////
-    // // Test functions
-    // //
+    //////////////////////////////////////////////////////
+    // Test functions
     //
-    // #[test_only]
-    // public fun create_bridge_for_testing(id: UID, chain_id: u8, ctx: &mut TxContext) {
-    //     create(id, chain_id, ctx);
-    // }
-    //
-    // #[test_only]
-    // public fun new_for_testing(chain_id: u8, ctx: &mut TxContext): Bridge {
-    //     let id = object::new(ctx);
-    //     let bridge_inner = BridgeInner {
-    //         bridge_version: CURRENT_VERSION,
-    //         message_version: MESSAGE_VERSION,
-    //         chain_id,
-    //         sequence_nums: SimpleMap::empty(),
-    //         committee: committee::create(ctx),
-    //         treasury: treasury::create(ctx),
-    //         token_transfer_records: linked_table::new(ctx),
-    //         limiter: limiter::new(),
-    //         paused: false,
-    //     };
-    //     let bridge = Bridge {
-    //     id,
-    //     inner: versioned::create(CURRENT_VERSION, bridge_inner, ctx),
-    //     };
-    //     bridge.setup_treasury_for_testing();
-    //     bridge
-    // }
-    //
-    // #[test_only]
-    // public fun setup_treasury_for_testing(bridge: &mut Bridge) {
-    //     bridge.load_inner_mut().treasury.setup_for_testing();
-    // }
-    //
-    // #[test_only]
-    // public fun test_init_bridge_committee(
-    //     bridge: &mut Bridge,
-    //     active_validator_voting_power: SimpleMap<address, u64>,
-    //     min_stake_participation_percentage: u64,
-    //     ctx: &TxContext,
-    // ) {
-    //     init_bridge_committee(
-    //         bridge,
-    //         active_validator_voting_power,
-    //         min_stake_participation_percentage,
-    //         ctx,
-    //     );
-    // }
-    //
-    // #[test_only]
-    // public fun new_bridge_record_for_testing(
-    //     message: BridgeMessage,
-    //     verified_signatures: Option<vector<vector<u8>>>,
-    //     claimed: bool,
-    // ): BridgeRecord {
-    //     BridgeRecord {
-    //         message,
-    //         verified_signatures,
-    //         claimed,
-    //     }
-    // }
-    //
-    // #[test_only]
-    // public fun test_load_inner_mut(bridge: &mut Bridge): &mut BridgeInner {
-    //     bridge.load_inner_mut()
-    // }
-    //
-    // #[test_only]
-    // public fun test_load_inner(bridge: &Bridge): &BridgeInner {
-    //     bridge.load_inner()
-    // }
-    //
-    // #[test_only]
-    // public fun test_get_token_transfer_action_status(
-    //     bridge: &mut Bridge,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    // ): u8 {
-    //     bridge.get_token_transfer_action_status(source_chain, bridge_seq_num)
-    // }
-    //
-    // #[test_only]
-    // public fun test_get_token_transfer_action_signatures(
-    //     bridge: &mut Bridge,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    // ): Option<vector<vector<u8>>> {
-    //     bridge.get_token_transfer_action_signatures(source_chain, bridge_seq_num)
-    // }
-    //
-    // #[test_only]
-    // public fun test_get_parsed_token_transfer_message(
-    //     bridge: &Bridge,
-    //     source_chain: u8,
-    //     bridge_seq_num: u64,
-    // ): Option<ParsedTokenTransferMessage> {
-    //     bridge.get_parsed_token_transfer_message(source_chain, bridge_seq_num)
-    // }
-    //
-    // #[test_only]
-    // public fun inner_limiter(bridge_inner: &BridgeInner): &TransferLimiter {
-    //     &bridge_inner.limiter
-    // }
-    //
-    // #[test_only]
-    // public fun inner_treasury(bridge_inner: &BridgeInner): &BridgeTreasury {
-    //     &bridge_inner.treasury
-    // }
-    //
-    // #[test_only]
-    // public fun inner_treasury_mut(bridge_inner: &mut BridgeInner): &mut BridgeTreasury {
-    //     &mut bridge_inner.treasury
-    // }
-    //
-    // #[test_only]
-    // public fun inner_paused(bridge_inner: &BridgeInner): bool {
-    //     bridge_inner.paused
-    // }
-    //
-    // #[test_only]
-    // public fun inner_token_transfer_records(
-    //     bridge_inner: &BridgeInner,
-    // ): &LinkedTable<BridgeMessageKey, BridgeRecord> {
-    //     &bridge_inner.token_transfer_records
-    // }
-    //
-    // #[test_only]
-    // public fun inner_token_transfer_records_mut(
-    //     bridge_inner: &mut BridgeInner,
-    // ): &mut LinkedTable<BridgeMessageKey, BridgeRecord> {
-    //     &mut bridge_inner.token_transfer_records
-    // }
-    //
-    // #[test_only]
-    // public fun test_execute_emergency_op(bridge_inner: &mut BridgeInner, payload: EmergencyOp) {
-    //     bridge_inner.execute_emergency_op(payload)
-    // }
-    //
-    // #[test_only]
-    // public fun sequence_nums(bridge_inner: &BridgeInner): &SimpleMap<u8, u64> {
-    //     &bridge_inner.sequence_nums
-    // }
-    //
-    // #[test_only]
-    // public fun assert_paused(bridge_inner: &BridgeInner, error: u64) {
-    //     assert!(bridge_inner.paused, error);
-    // }
-    //
-    // #[test_only]
-    // public fun assert_not_paused(bridge_inner: &BridgeInner, error: u64) {
-    //     assert!(!bridge_inner.paused, error);
-    // }
-    //
-    // #[test_only]
-    // public fun test_get_current_seq_num_and_increment(
-    //     bridge_inner: &mut BridgeInner,
-    //     msg_type: u8,
-    // ): u64 {
-    //     get_current_seq_num_and_increment(bridge_inner, msg_type)
-    // }
-    //
-    // #[test_only]
-    // public fun test_execute_update_bridge_limit(inner: &mut BridgeInner, payload: UpdateBridgeLimit) {
-    //     execute_update_bridge_limit(inner, payload)
-    // }
-    //
-    // #[test_only]
-    // public fun test_execute_update_asset_price(inner: &mut BridgeInner, payload: UpdateAssetPrice) {
-    //     execute_update_asset_price(inner, payload)
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_status_pending(): u8 {
-    //     TRANSFER_STATUS_PENDING
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_status_approved(): u8 {
-    //     TRANSFER_STATUS_APPROVED
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_status_claimed(): u8 {
-    //     TRANSFER_STATUS_CLAIMED
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_status_not_found(): u8 {
-    //     TRANSFER_STATUS_NOT_FOUND
-    // }
-    //
-    // #[test_only]
-    // public fun test_execute_add_tokens_on_sui(bridge: &mut Bridge, payload: AddTokenOnStarcoin) {
-    //     let inner = load_inner_mut(bridge);
-    //     inner.execute_add_tokens_on_sui(payload);
-    // }
-    //
-    // #[test_only]
-    // public fun get_seq_num_for(bridge: &mut Bridge, message_type: u8): u64 {
-    //     let inner = load_inner_mut(bridge);
-    //     let seq_num = if (inner.sequence_nums.contains(&message_type)) {
-    //         inner.sequence_nums[&message_type]
-    //     } else {
-    //         inner.sequence_nums.insert(message_type, 0);
-    //         0
-    //     };
-    //     seq_num
-    // }
-    //
-    // #[test_only]
-    // public fun get_seq_num_inc_for(bridge: &mut Bridge, message_type: u8): u64 {
-    //     let inner = load_inner_mut(bridge);
-    //     inner.get_current_seq_num_and_increment(message_type)
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_approve_key(event: TokenTransferApproved): BridgeMessageKey {
-    //     event.message_key
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_claimed_key(event: TokenTransferClaimed): BridgeMessageKey {
-    //     event.message_key
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_already_approved_key(event: TokenTransferAlreadyApproved): BridgeMessageKey {
-    //     event.message_key
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_already_claimed_key(event: TokenTransferAlreadyClaimed): BridgeMessageKey {
-    //     event.message_key
-    // }
-    //
-    // #[test_only]
-    // public fun transfer_limit_exceed_key(event: TokenTransferLimitExceed): BridgeMessageKey {
-    //     event.message_key
-    // }
-    //
-    // #[test_only]
-    // public fun unwrap_deposited_event(
-    //     event: TokenDepositedEvent,
-    // ): (u64, u8, vector<u8>, u8, vector<u8>, u8, u64) {
-    //     (
-    //         event.seq_num,
-    //         event.source_chain,
-    //         event.sender_address,
-    //         event.target_chain,
-    //         event.target_address,
-    //         event.token_type,
-    //         event.amount,
-    //     )
-    // }
-    //
-    // #[test_only]
-    // public fun unwrap_emergency_op_event(event: EmergencyOpEvent): bool {
-    //     event.frozen
-    // }
+    #[test_only]
+    public fun new_for_testing(chain_id: u8): Bridge {
+        let inner = BridgeInner {
+            bridge_version: CURRENT_VERSION,
+            message_version: MESSAGE_VERSION,
+            chain_id,
+            sequence_nums: SimpleMap::create<u8, u64>(),
+            committee: Committee::create(),
+            treasury: Treasury::create(),
+            token_transfer_records: SimpleMap::create<BridgeMessageKey, BridgeRecord>(),
+            limiter: Limiter::new(),
+            paused: false,
+        };
+        let bridge = Bridge {
+            id,
+            inner,
+        };
+        Treasury::setup_for_testing(&mut bridge.inner.treasury);
+        bridge
+    }
+
+
+    #[test_only]
+    public fun test_init_bridge_committee(
+        sender: &signer,
+        bridge: &mut Bridge,
+        active_validator_voting_power: SimpleMap<address, u64>,
+        min_stake_participation_percentage: u64,
+    ) {
+        Self::init_bridge_committee(
+            sender,
+            bridge,
+            active_validator_voting_power,
+            min_stake_participation_percentage,
+            0,
+        );
+    }
+
+    #[test_only]
+    public fun new_bridge_record_for_testing(
+        message: BridgeMessage,
+        verified_signatures: Option<vector<vector<u8>>>,
+        claimed: bool,
+    ): BridgeRecord {
+        BridgeRecord {
+            message,
+            verified_signatures,
+            claimed,
+        }
+    }
+
+    #[test_only]
+    public fun test_load_inner_mut(bridge: &mut Bridge): &mut BridgeInner {
+        &mut bridge.inner
+    }
+
+    #[test_only]
+    public fun test_load_inner(bridge: &Bridge): &BridgeInner {
+        &bridge.inner
+    }
+
+
+    #[test_only]
+    public fun test_get_token_transfer_action_status(
+        bridge: &mut Bridge,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ): u8 {
+        Self::get_token_transfer_action_status(bridge, source_chain, bridge_seq_num)
+    }
+
+    #[test_only]
+    public fun test_get_token_transfer_action_signatures(
+        bridge: &mut Bridge,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ): Option<vector<vector<u8>>> {
+        Self::get_token_transfer_action_signatures(bridge, source_chain, bridge_seq_num)
+    }
+
+    #[test_only]
+    public fun test_get_parsed_token_transfer_message(
+        bridge: &Bridge,
+        source_chain: u8,
+        bridge_seq_num: u64,
+    ): Option<ParsedTokenTransferMessage> {
+        Self::get_parsed_token_transfer_message(bridge, source_chain, bridge_seq_num)
+    }
+
+    #[test_only]
+    public fun inner_limiter(bridge_inner: &BridgeInner): &TransferLimiter {
+        &bridge_inner.limiter
+    }
+
+    #[test_only]
+    public fun inner_treasury(bridge_inner: &BridgeInner): &BridgeTreasury {
+        &bridge_inner.treasury
+    }
+
+    #[test_only]
+    public fun inner_treasury_mut(bridge_inner: &mut BridgeInner): &mut BridgeTreasury {
+        &mut bridge_inner.treasury
+    }
+
+    #[test_only]
+    public fun inner_paused(bridge_inner: &BridgeInner): bool {
+        bridge_inner.paused
+    }
+
+    #[test_only]
+    public fun inner_token_transfer_records(
+        bridge_inner: &BridgeInner,
+    ): &SimpleMap<BridgeMessageKey, BridgeRecord> {
+        &bridge_inner.token_transfer_records
+    }
+
+    #[test_only]
+    public fun inner_token_transfer_records_mut(
+        bridge_inner: &mut BridgeInner,
+    ): &mut SimpleMap<BridgeMessageKey, BridgeRecord> {
+        &mut bridge_inner.token_transfer_records
+    }
+
+    #[test_only]
+    public fun test_execute_emergency_op(bridge_inner: &mut BridgeInner, payload: EmergencyOp) acquires EventHandlePod {
+        Self::execute_emergency_op(bridge_inner, payload)
+    }
+
+    #[test_only]
+    public fun sequence_nums(bridge_inner: &BridgeInner): &SimpleMap<u8, u64> {
+        &bridge_inner.sequence_nums
+    }
+
+    #[test_only]
+    public fun assert_paused(bridge_inner: &BridgeInner, error: u64) {
+        assert!(bridge_inner.paused, error);
+    }
+
+    #[test_only]
+    public fun assert_not_paused(bridge_inner: &BridgeInner, error: u64) {
+        assert!(!bridge_inner.paused, error);
+    }
+
+    #[test_only]
+    public fun test_get_current_seq_num_and_increment(
+        bridge_inner: &mut BridgeInner,
+        msg_type: u8,
+    ): u64 {
+        get_current_seq_num_and_increment(bridge_inner, msg_type)
+    }
+
+    #[test_only]
+    public fun test_execute_update_bridge_limit(inner: &mut BridgeInner, payload: UpdateBridgeLimit) {
+        execute_update_bridge_limit(inner, payload)
+    }
+
+    #[test_only]
+    public fun test_execute_update_asset_price(inner: &mut BridgeInner, payload: UpdateAssetPrice) {
+        execute_update_asset_price(inner, payload)
+    }
+
+    #[test_only]
+    public fun transfer_status_pending(): u8 {
+        TRANSFER_STATUS_PENDING
+    }
+
+    #[test_only]
+    public fun transfer_status_approved(): u8 {
+        TRANSFER_STATUS_APPROVED
+    }
+
+    #[test_only]
+    public fun transfer_status_claimed(): u8 {
+        TRANSFER_STATUS_CLAIMED
+    }
+
+    #[test_only]
+    public fun transfer_status_not_found(): u8 {
+        TRANSFER_STATUS_NOT_FOUND
+    }
+
+    #[test_only]
+    public fun test_execute_add_tokens_on_sui(bridge: &mut Bridge, payload: AddTokenOnStarcoin) {
+        let inner = load_inner_mut(bridge);
+        Self::execute_add_tokens_on_starcoin(inner, payload);
+    }
+
+    #[test_only]
+    public fun get_seq_num_for(bridge: &mut Bridge, message_type: u8): u64 {
+        let inner = load_inner_mut(bridge);
+        let seq_num = if (SimpleMap::contains_key(&inner.sequence_nums, &message_type)) {
+            SimpleMap::borrow(&inner.sequence_nums, &message_type)
+        } else {
+            SimpleMap::add(&mut inner.sequence_nums, message_type, 0);
+            0
+        };
+        seq_num
+    }
+
+    #[test_only]
+    public fun get_seq_num_inc_for(bridge: &mut Bridge, message_type: u8): u64 {
+        let inner = load_inner_mut(bridge);
+        Self::get_current_seq_num_and_increment(inner, message_type)
+    }
+
+    #[test_only]
+    public fun transfer_approve_key(event: TokenTransferApproved): BridgeMessageKey {
+        event.message_key
+    }
+
+    #[test_only]
+    public fun transfer_claimed_key(event: TokenTransferClaimed): BridgeMessageKey {
+        event.message_key
+    }
+
+    #[test_only]
+    public fun transfer_already_approved_key(event: TokenTransferAlreadyApproved): BridgeMessageKey {
+        event.message_key
+    }
+
+    #[test_only]
+    public fun transfer_already_claimed_key(event: TokenTransferAlreadyClaimed): BridgeMessageKey {
+        event.message_key
+    }
+
+    #[test_only]
+    public fun transfer_limit_exceed_key(event: TokenTransferLimitExceed): BridgeMessageKey {
+        event.message_key
+    }
+
+    #[test_only]
+    public fun unwrap_deposited_event(
+        event: TokenDepositedEvent,
+    ): (u64, u8, vector<u8>, u8, vector<u8>, u8, u64) {
+        (
+            event.seq_num,
+            event.source_chain,
+            event.sender_address,
+            event.target_chain,
+            event.target_address,
+            event.token_type,
+            event.amount,
+        )
+    }
+
+    #[test_only]
+    public fun unwrap_emergency_op_event(event: EmergencyOpEvent): bool {
+        event.frozen
+    }
 }
